@@ -13,7 +13,23 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
-      [_ in never]: never
+      words: {
+        Row: {
+          id: string
+          word: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          word: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          word?: string
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

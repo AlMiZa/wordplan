@@ -3,6 +3,7 @@ import { DashboardLayout } from './layouts/DashboardLayout'
 import { AuthLayout } from './layouts/AuthLayout'
 import DashboardPage from './pages/dashboard'
 import LoginPage from './pages/login'
+import WordsPage from './pages/words'
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         {/* Dashboard routes */}
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/words" element={<WordsPage />} />
         </Route>
 
         {/* Default redirect */}
