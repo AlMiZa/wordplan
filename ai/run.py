@@ -5,9 +5,11 @@ from functools import wraps
 from typing import Optional
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from supabase import create_client, Client
 
 from crews.random_phrase_crew.crew import RandomPhraseCrew
+from crews.random_phrase_crew.schemas import PhraseOutput
 
 from lib.tracer import traceable
 
@@ -15,6 +17,21 @@ warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Configure CORS - allow requests from localhost frontend
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [
+            "http://localhost:5173",  # Vite dev server
+            "http://localhost:3000",  # Alternative port
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000"
+        ],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
@@ -75,7 +92,7 @@ async def get_user_context(user_id: str) -> Optional[str]:
 
 
 @traceable
-async def generate_random_phrase(words: list[str], user_context: str) -> str:
+async def generate_random_phrase(words: list[str], user_context: str) -> PhraseOutput:
     """
     Generate a random phrase using the RandomPhraseCrew.
 
@@ -84,7 +101,7 @@ async def generate_random_phrase(words: list[str], user_context: str) -> str:
         user_context: User context to personalize the phrase
 
     Returns:
-        Generated phrase as a string
+        PhraseOutput with phrase and words used
     """
     inputs = {
         'words': jsonify(words).get_data(as_text=True),
@@ -93,7 +110,12 @@ async def generate_random_phrase(words: list[str], user_context: str) -> str:
 
     result = await RandomPhraseCrew().crew().kickoff_async(inputs=inputs)
 
-    return str(result)
+    # CrewAI returns a result with a .pydantic attribute containing the Pydantic model
+    if hasattr(result, 'pydantic'):
+        return result.pydantic
+
+    # Fallback - return a basic PhraseOutput
+    return PhraseOutput(phrase=str(result), words=words)
 
 
 @app.route("/health", methods=["GET"])
@@ -141,7 +163,7 @@ async def get_random_phrase():
         # Generate the phrase
         result = await generate_random_phrase(words, user_context or "")
 
-        return jsonify(result), 200
+        return jsonify(result.model_dump()), 200
 
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500

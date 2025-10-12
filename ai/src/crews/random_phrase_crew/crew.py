@@ -3,6 +3,7 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from typing import List
 from src.crews.base.llm import DEFAULT_LLM
+from src.crews.random_phrase_crew.schemas import PhraseOutput
 
 @CrewBase
 class RandomPhraseCrew():
@@ -19,7 +20,8 @@ class RandomPhraseCrew():
     @task
     def phrase_generation_task(self) -> Task:
         return Task(
-            config=self.tasks_config['phrase_generation_task'], # type: ignore[index]
+            config=self.tasks_config['phrase_generation_task'],
+            output_pydantic=PhraseOutput
         )
 
     @crew

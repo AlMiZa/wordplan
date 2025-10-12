@@ -923,6 +923,19 @@ async = [
 ]
 
 [[package]]
+name = "flask-cors"
+version = "6.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "flask" },
+    { name = "werkzeug" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/76/37/bcfa6c7d5eec777c4c7cf45ce6b27631cebe5230caf88d85eadd63edd37a/flask_cors-6.0.1.tar.gz", hash = "sha256:d81bcb31f07b0985be7f48406247e9243aced229b7747219160a0559edd678db", size = 13463, upload-time = "2025-06-11T01:32:08.518Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/f8/01bf35a3afd734345528f98d0353f2a978a476528ad4d7e78b70c4d149dd/flask_cors-6.0.1-py3-none-any.whl", hash = "sha256:c7b2cbfb1a31aa0d2e5341eea03a6805349f7a61647daee1a15c46bbe981494c", size = 13244, upload-time = "2025-06-11T01:32:07.352Z" },
+]
+
+[[package]]
 name = "flatbuffers"
 version = "25.9.23"
 source = { registry = "https://pypi.org/simple" }
@@ -4115,6 +4128,7 @@ dependencies = [
     { name = "crewai" },
     { name = "crewai-tools" },
     { name = "flask", extra = ["async"] },
+    { name = "flask-cors" },
     { name = "openinference-instrumentation-crewai" },
     { name = "openinference-instrumentation-litellm" },
     { name = "opentelemetry-exporter-otlp" },
@@ -4140,6 +4154,7 @@ requires-dist = [
     { name = "crewai", specifier = "==0.201.0" },
     { name = "crewai-tools", specifier = "==0.75.0" },
     { name = "flask", extras = ["async"], specifier = ">=3.1.0" },
+    { name = "flask-cors", specifier = ">=5.0.0" },
     { name = "openinference-instrumentation-crewai", specifier = "==0.1.10" },
     { name = "openinference-instrumentation-litellm", specifier = "==0.1.23" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.34.1" },
