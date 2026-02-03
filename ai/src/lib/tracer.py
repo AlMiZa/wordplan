@@ -4,28 +4,35 @@ import functools
 import uuid
 from typing import Callable, TypeVar, ParamSpec
 
-from openinference.instrumentation import using_session
-from openinference.semconv.trace import SpanAttributes
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+# Optional Phoenix tracing - gracefully handle import failures
+try:
+    from openinference.instrumentation import using_session
+    from openinference.semconv.trace import SpanAttributes
+    from opentelemetry import trace
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-from openinference.instrumentation.crewai import CrewAIInstrumentor
-from openinference.instrumentation.litellm import LiteLLMInstrumentor
+    from openinference.instrumentation.crewai import CrewAIInstrumentor
+    from openinference.instrumentation.litellm import LiteLLMInstrumentor
 
-from phoenix.otel import register
+    from phoenix.otel import register
 
-PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME")
-PHOENIX_COLLECTOR_ENDPOINT = os.getenv("PHOENIX_COLLECTOR_ENDPOINT")
+    PROJECT_NAME = os.getenv("PHOENIX_PROJECT_NAME")
+    PHOENIX_COLLECTOR_ENDPOINT = os.getenv("PHOENIX_COLLECTOR_ENDPOINT")
 
-# Setup Phoenix tracer provider
-tracer_provider = register(project_name=PROJECT_NAME)
-tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(PHOENIX_COLLECTOR_ENDPOINT)))
-CrewAIInstrumentor().instrument(tracer_provider=tracer_provider)
-LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
+    # Setup Phoenix tracer provider
+    tracer_provider = register(project_name=PROJECT_NAME)
+    tracer_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter(PHOENIX_COLLECTOR_ENDPOINT)))
+    CrewAIInstrumentor().instrument(tracer_provider=tracer_provider)
+    LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
 
-# Get tracer
-tracer = trace.get_tracer(__name__)
+    # Get tracer
+    tracer = trace.get_tracer(__name__)
+    TRACING_ENABLED = True
+except Exception as e:
+    print(f"Warning: Phoenix tracing disabled due to import error: {e}")
+    tracer = None
+    TRACING_ENABLED = False
 
 P = ParamSpec('P')
 T = TypeVar('T')
@@ -34,6 +41,7 @@ def traceable(func: Callable[P, T]) -> Callable[P, T]:
     """
     A decorator that sets up tracing for test functions.
     It creates a new trace session and span for each test execution.
+    If tracing is disabled, the function runs without tracing.
 
     Usage:
         @traceable
@@ -46,6 +54,10 @@ def traceable(func: Callable[P, T]) -> Callable[P, T]:
             # Your async test code here
             pass
     """
+    if not TRACING_ENABLED:
+        # Tracing disabled, return the original function
+        return func
+
     @functools.wraps(func)
     def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
         session_id = str(uuid.uuid4())

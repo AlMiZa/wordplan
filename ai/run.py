@@ -115,7 +115,7 @@ async def generate_random_phrase(words: list[str], user_context: str) -> PhraseO
         return result.pydantic
 
     # Fallback - return a basic PhraseOutput
-    return PhraseOutput(phrase=str(result), words=words)
+    return PhraseOutput(phrase=str(result), words_used=words)
 
 
 @app.route("/health", methods=["GET"])

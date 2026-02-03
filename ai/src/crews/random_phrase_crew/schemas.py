@@ -9,7 +9,7 @@ class PhraseOutput(BaseModel):
         ...,
         description="The generated phrase using the provided words"
     )
-    words: List[str] = Field(
+    words_used: List[str] = Field(
         ...,
         description="List of words that were actually used in the generated phrase"
     )
