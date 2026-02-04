@@ -29,15 +29,10 @@ app = Flask(__name__)
 # Configure CORS - allow requests from localhost frontend
 CORS(app, resources={
     r"/api/*": {
-        "origins": [
-            "http://localhost:5173",  # Vite dev server
-            "http://localhost:3000",  # Alternative port
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000"
-        ],
+        "origins": "*",  # Allow all origins for development
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
+        "supports_credentials": False  # Cannot use credentials with wildcard origin
     }
 })
 
@@ -83,7 +78,7 @@ def require_auth(f):
 async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
     """
     Fetch user context and target language from Supabase.
-    Creates a profile if it doesn't exist.
+    Uses service role client to bypass RLS and ensure access.
 
     Args:
         user_id: The user's UUID
@@ -92,16 +87,16 @@ async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
         Tuple of (user_context, target_language) or (None, None) if not found
     """
     try:
-        # Fetch user context and target language from the profiles table
-        response = supabase.table("profiles").select("context", "target_language").eq("id", user_id).execute()
+        # Use service role client to bypass RLS and fetch profile
+        # This ensures we can always read the user's profile
+        response = supabase_admin.table("profiles").select("context", "target_language").eq("id", user_id).execute()
 
         if response.data and len(response.data) > 0:
             logger.debug(f"Found profile for user {user_id}")
             return response.data[0].get("context", ""), response.data[0].get("target_language")
         else:
-            # Profile doesn't exist, create it
+            # Profile doesn't exist, create it with service role
             logger.warning(f"Profile not found for user {user_id}, creating it...")
-            # Use service role client to bypass RLS for profile creation
             response = supabase_admin.table("profiles").insert({
                 "id": user_id,
                 "context": None,
