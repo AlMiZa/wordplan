@@ -44,7 +44,10 @@ CORS(app, resources={
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# Create a service role client for admin operations (bypasses RLS)
+supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
 def require_auth(f):
@@ -98,7 +101,8 @@ async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
         else:
             # Profile doesn't exist, create it
             logger.warning(f"Profile not found for user {user_id}, creating it...")
-            response = supabase.table("profiles").insert({
+            # Use service role client to bypass RLS for profile creation
+            response = supabase_admin.table("profiles").insert({
                 "id": user_id,
                 "context": None,
                 "target_language": None
@@ -235,7 +239,8 @@ async def update_target_language():
         # If no rows were updated, the profile doesn't exist - create it
         if response.data == [] or len(response.data) == 0:
             logger.warning(f"Profile not found for user {user_id}, creating it...")
-            response = supabase.table("profiles").insert({
+            # Use service role client to bypass RLS for profile creation
+            response = supabase_admin.table("profiles").insert({
                 "id": user_id,
                 "context": None,
                 "target_language": target_language
