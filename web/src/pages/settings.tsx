@@ -11,6 +11,8 @@ export default function SettingsPage() {
   const { profile, signOut } = useUser()
   const [showLanguageModal, setShowLanguageModal] = useState(false)
 
+  console.log('Settings page - profile:', profile)
+
   const handleSignOut = async () => {
     try {
       await signOut()

@@ -15,7 +15,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   // Check for first-time user (no language selected)
   useEffect(() => {
-    if (user && profile && profile.target_language === null && location.pathname !== '/settings') {
+    console.log('AuthGuard checking language:', { user: !!user, profile, pathname: location.pathname })
+    if (user && profile && !profile.target_language && location.pathname !== '/settings') {
+      console.log('Showing language modal for first-time user')
       setShowLanguageModal(true)
     }
   }, [user, profile, location.pathname])
