@@ -16,20 +16,25 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
   const navigate = useNavigate()
   const [selectedLanguage, setSelectedLanguage] = useState<TargetLanguage | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleOk = async () => {
     if (!selectedLanguage) return
 
     setIsSaving(true)
+    setError(null)
     try {
       await updateTargetLanguage(selectedLanguage)
+      // Close modal on success
       onOpenChange(false)
 
       if (isFirstTime) {
         navigate('/dashboard')
       }
-    } catch (error) {
-      console.error('Failed to update target language:', error)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save language selection'
+      setError(message)
+      console.error('Failed to update target language:', err)
     } finally {
       setIsSaving(false)
     }
@@ -37,12 +42,14 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
 
   const handleCancel = () => {
     setSelectedLanguage(null)
+    setError(null)
     onOpenChange(false)
   }
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       setSelectedLanguage(null)
+      setError(null)
     }
     onOpenChange(open)
   }
@@ -86,6 +93,12 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
           <p className="mt-6 text-sm text-muted-foreground">
             You can always change this preference later in Settings.
           </p>
+        )}
+
+        {error && (
+          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
         )}
 
         <SheetFooter className="mt-6 gap-2 sm:gap-0">

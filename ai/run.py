@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import warnings
 from functools import wraps
@@ -12,6 +13,13 @@ from crews.random_phrase_crew.crew import RandomPhraseCrew
 from crews.random_phrase_crew.schemas import PhraseOutput
 
 from lib.tracer import traceable
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
@@ -85,18 +93,20 @@ async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
         response = supabase.table("profiles").select("context", "target_language").eq("id", user_id).execute()
 
         if response.data and len(response.data) > 0:
+            logger.debug(f"Found profile for user {user_id}")
             return response.data[0].get("context", ""), response.data[0].get("target_language")
         else:
             # Profile doesn't exist, create it
-            print(f"Profile not found for user {user_id}, creating it...")
+            logger.warning(f"Profile not found for user {user_id}, creating it...")
             response = supabase.table("profiles").insert({
                 "id": user_id,
                 "context": None,
                 "target_language": None
             }).execute()
+            logger.info(f"Created profile for user {user_id}")
             return "", None
     except Exception as e:
-        print(f"Error fetching user context: {e}")
+        logger.error(f"Error fetching user context: {e}", exc_info=True)
         return None, None
 
 
@@ -216,24 +226,26 @@ async def update_target_language():
             return jsonify({"error": f"target_language must be one of: {valid_languages}"}), 400
 
         user_id = request.user.id
+        logger.info(f"Updating target language for user {user_id} to {target_language}")
 
         # First, try to update the profile
         response = supabase.table("profiles").update({"target_language": target_language}).eq("id", user_id).execute()
+        logger.info(f"Update response: {response.data}")
 
         # If no rows were updated, the profile doesn't exist - create it
         if response.data == [] or len(response.data) == 0:
-            print(f"Profile not found for user {user_id}, creating it...")
+            logger.warning(f"Profile not found for user {user_id}, creating it...")
             response = supabase.table("profiles").insert({
                 "id": user_id,
                 "context": None,
                 "target_language": target_language
             }).execute()
-            print(f"Profile created: {response.data}")
+            logger.info(f"Profile created: {response.data}")
 
         return jsonify({"success": True, "target_language": target_language}), 200
 
     except Exception as e:
-        print(f"Error updating target language: {e}")
+        logger.error(f"Error updating target language: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 
