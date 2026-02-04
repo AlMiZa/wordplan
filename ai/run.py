@@ -72,6 +72,7 @@ def require_auth(f):
 async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
     """
     Fetch user context and target language from Supabase.
+    Creates a profile if it doesn't exist.
 
     Args:
         user_id: The user's UUID
@@ -81,11 +82,19 @@ async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
     """
     try:
         # Fetch user context and target language from the profiles table
-        response = supabase.table("profiles").select("context", "target_language").eq("id", user_id).single().execute()
+        response = supabase.table("profiles").select("context", "target_language").eq("id", user_id).execute()
 
-        if response.data:
-            return response.data.get("context", ""), response.data.get("target_language")
-        return None, None
+        if response.data and len(response.data) > 0:
+            return response.data[0].get("context", ""), response.data[0].get("target_language")
+        else:
+            # Profile doesn't exist, create it
+            print(f"Profile not found for user {user_id}, creating it...")
+            response = supabase.table("profiles").insert({
+                "id": user_id,
+                "context": None,
+                "target_language": None
+            }).execute()
+            return "", None
     except Exception as e:
         print(f"Error fetching user context: {e}")
         return None, None
@@ -178,6 +187,7 @@ async def get_random_phrase():
 async def update_target_language():
     """
     Update the user's target language preference.
+    Creates a profile if it doesn't exist.
 
     Request body:
         {
@@ -206,11 +216,24 @@ async def update_target_language():
             return jsonify({"error": f"target_language must be one of: {valid_languages}"}), 400
 
         user_id = request.user.id
+
+        # First, try to update the profile
         response = supabase.table("profiles").update({"target_language": target_language}).eq("id", user_id).execute()
+
+        # If no rows were updated, the profile doesn't exist - create it
+        if response.data == [] or len(response.data) == 0:
+            print(f"Profile not found for user {user_id}, creating it...")
+            response = supabase.table("profiles").insert({
+                "id": user_id,
+                "context": None,
+                "target_language": target_language
+            }).execute()
+            print(f"Profile created: {response.data}")
 
         return jsonify({"success": True, "target_language": target_language}), 200
 
     except Exception as e:
+        print(f"Error updating target language: {e}")
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 

@@ -15,14 +15,11 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
   const navigate = useNavigate()
 
   const handleLanguageSelect = async (language: TargetLanguage) => {
-    console.log('Language selected:', language, 'isFirstTime:', isFirstTime)
     try {
       await updateTargetLanguage(language)
-      console.log('Language updated successfully, closing modal')
       onOpenChange(false)
 
       if (isFirstTime) {
-        console.log('Navigating to dashboard')
         navigate('/dashboard')
       }
     } catch (error) {

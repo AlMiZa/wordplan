@@ -29,7 +29,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const fetchProfile = async (userId: string) => {
     setProfileLoading(true)
     try {
-      console.log('Fetching profile for user:', userId)
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -37,7 +36,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         .single()
 
       if (error) throw error
-      console.log('Profile data:', data)
       setProfile(data)
     } catch (err) {
       console.error('Error fetching profile:', err)
@@ -86,7 +84,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }
 
   const updateTargetLanguage = async (language: TargetLanguage) => {
-    console.log('updateTargetLanguage called with:', language)
     if (!user) {
       throw new Error('User must be authenticated')
     }
@@ -98,7 +95,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
 
     const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000'
-    console.log('Calling API:', `${AI_SERVICE_URL}/api/profile/target-language`)
 
     const response = await fetch(`${AI_SERVICE_URL}/api/profile/target-language`, {
       method: 'PUT',
@@ -109,16 +105,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ target_language: language }),
     })
 
-    console.log('API response status:', response.status)
-
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-      console.error('API error:', errorData)
       throw new Error(errorData.error || `Failed to update target language: ${response.statusText}`)
     }
-
-    const result = await response.json()
-    console.log('API success:', result)
 
     // Refresh profile after update
     await fetchProfile(user.id)
