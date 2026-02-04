@@ -1,25 +1,38 @@
 phrase_generation_task:
   description: >
-    Create a short, natural-sounding phrase using the provided words: {words}
+    Create a short phrase in English using the provided words: {words}
 
+    Target language: {target_language}
     User context: {user_context}
 
-    Your task is to compose a concise phrase that incorporates as many of these words
-    as possible while maintaining natural flow and meaning. Consider the user context
-    to make the phrase more relevant and personalized. It's acceptable to skip
-    words that don't fit naturally. Prioritize creating something that sounds authentic
-    and meaningful rather than forcing all words together awkwardly.
+    Your task:
+    1. Compose a concise English phrase that incorporates as many of the provided words as possible while maintaining natural flow and meaning
+    2. If target_language is provided and is not "None" or "null", translate the phrase to that target language
+    3. Consider user context to make the phrase more relevant and personalized
+    4. It's acceptable to skip words that don't fit naturally
+
+    Prioritize creating something that sounds authentic and meaningful rather than forcing all words together awkwardly.
+
+    If target_language is null, "none", or "None", only provide the English phrase.
+    Otherwise, provide both the English phrase and its translation.
 
     You must return your response as a JSON object with the following structure:
     {{
-      "phrase": "your generated phrase here",
-      "words": ["word1", "word2", "word3"]
+      "phrase": "English phrase here",
+      "phrase_target_lang": "translation in target language or null",
+      "target_language": "{target_language}",
+      "words_used": ["word1", "word2", "word3"]
     }}
 
-    Where "phrase" is the generated phrase, and "words" is a list of the words from the
-    input that you actually used in the phrase.
+    Where:
+    - "phrase" is the generated English phrase
+    - "phrase_target_lang" is the translation in the target language, or null if no target language
+    - "target_language" is the target language code (polish, belarusian, italian) or null
+    - "words_used" is a list of the words from the input that you actually used in the phrase
   expected_output: >
-    A JSON object with two fields: "phrase" (string) containing a short phrase (5-15 words)
-    that naturally incorporates words from the input, and "words" (array of strings)
-    containing the list of words that were actually used in the phrase.
+    A JSON object with four fields: "phrase" (string) containing a short phrase (5-15 words)
+    that naturally incorporates words from the input, "phrase_target_lang" (string or null)
+    containing the translation in the target language, "target_language" (string or null)
+    containing the target language code, and "words_used" (array of strings) containing the
+    list of words that were actually used in the phrase.
   agent: phrase_creator

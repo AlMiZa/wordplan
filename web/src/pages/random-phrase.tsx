@@ -4,14 +4,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { TARGET_LANGUAGES } from '@/types/languages'
 
 export default function RandomPhrasePage() {
-  const { phrase, words, loading, error, generatePhrase } = useRandomPhrase()
+  const { phrase, phraseTargetLang, targetLanguage, words, loading, error, generatePhrase } = useRandomPhrase()
 
   // Generate initial phrase on component mount
   useEffect(() => {
     generatePhrase()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const targetLanguageInfo = targetLanguage
+    ? TARGET_LANGUAGES[targetLanguage as keyof typeof TARGET_LANGUAGES]
+    : null
 
   return (
     <div className="container mx-auto py-8">
@@ -21,6 +26,7 @@ export default function RandomPhrasePage() {
             <CardTitle>Random Phrase Generator</CardTitle>
             <CardDescription>
               Generate creative phrases using three random words from the database
+              {targetLanguageInfo && ` (Bilingual: English + ${targetLanguageInfo.name})`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -47,7 +53,7 @@ export default function RandomPhrasePage() {
             {/* Generated Phrase Section */}
             <div>
               <h3 className="text-sm font-medium mb-3">Generated Phrase:</h3>
-              <div className="rounded-lg border bg-muted/50 p-6 min-h-[120px] flex items-center justify-center">
+              <div className="rounded-lg border bg-muted/50 p-6 min-h-[120px] flex flex-col items-center justify-center">
                 {loading ? (
                   <div className="space-y-2 w-full">
                     <Skeleton className="h-4 w-full" />
@@ -60,7 +66,26 @@ export default function RandomPhrasePage() {
                     <p className="text-sm text-muted-foreground">{error.message}</p>
                   </div>
                 ) : phrase ? (
-                  <p className="text-lg text-center leading-relaxed">{phrase}</p>
+                  <div className="text-center space-y-4 w-full">
+                    {/* English Phrase */}
+                    <div>
+                      <Badge variant="outline" className="mb-2">English</Badge>
+                      <p className="text-lg leading-relaxed">{phrase}</p>
+                    </div>
+
+                    {/* Target Language Phrase */}
+                    {phraseTargetLang && (
+                      <>
+                        <div className="border-t border-muted-foreground/20 my-3" />
+                        <div>
+                          <Badge variant="outline" className="mb-2">
+                            {targetLanguageInfo?.flag} {targetLanguageInfo?.name || 'Translation'}
+                          </Badge>
+                          <p className="text-lg leading-relaxed">{phraseTargetLang}</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 ) : (
                   <p className="text-muted-foreground text-center">
                     Click "Generate New Phrase" to start
@@ -90,10 +115,17 @@ export default function RandomPhrasePage() {
                 This feature pulls three random words from the database and uses AI to create
                 a creative phrase that incorporates all three words.
               </p>
-              <p>
-                Each generation is personalized based on your user profile context for a unique
-                experience.
-              </p>
+              {targetLanguageInfo ? (
+                <p>
+                  Each generation is personalized based on your user profile context and provided
+                  in both English and {targetLanguageInfo.name} for a bilingual learning experience.
+                </p>
+              ) : (
+                <p>
+                  Each generation is personalized based on your user profile context. Select a target
+                  language in Settings to enable bilingual generation.
+                </p>
+              )}
             </div>
           </CardContent>
         </Card>

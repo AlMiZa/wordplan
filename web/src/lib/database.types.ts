@@ -30,6 +30,29 @@ export interface Database {
           created_at?: string
         }
       }
+      profiles: {
+        Row: {
+          id: string
+          context: string | null
+          target_language: 'polish' | 'belarusian' | 'italian' | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id: string
+          context?: string | null
+          target_language?: 'polish' | 'belarusian' | 'italian' | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          context?: string | null
+          target_language?: 'polish' | 'belarusian' | 'italian' | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

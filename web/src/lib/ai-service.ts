@@ -4,6 +4,8 @@ const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:
 
 export interface RandomPhraseResponse {
   phrase: string
+  phrase_target_lang: string | null
+  target_language: string | null
   words_used: string[]
 }
 
