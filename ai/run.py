@@ -239,13 +239,24 @@ async def update_target_language():
         # If no rows were updated, the profile doesn't exist - create it
         if response.data == [] or len(response.data) == 0:
             logger.warning(f"Profile not found for user {user_id}, creating it...")
-            # Use service role client to bypass RLS for profile creation
-            response = supabase_admin.table("profiles").insert({
-                "id": user_id,
-                "context": None,
-                "target_language": target_language
-            }).execute()
-            logger.info(f"Profile created: {response.data}")
+            try:
+                # Use service role client to bypass RLS for profile creation
+                response = supabase_admin.table("profiles").insert({
+                    "id": user_id,
+                    "context": None,
+                    "target_language": target_language
+                }).execute()
+                logger.info(f"Profile created: {response.data}")
+            except Exception as insert_error:
+                # Profile might have been created by the trigger between our check and insert
+                if "duplicate key" in str(insert_error).lower():
+                    logger.info(f"Profile already exists (likely created by trigger), updating instead...")
+                    response = supabase_admin.table("profiles").update({
+                        "target_language": target_language
+                    }).eq("id", user_id).execute()
+                    logger.info(f"Profile updated: {response.data}")
+                else:
+                    raise insert_error
 
         return jsonify({"success": True, "target_language": target_language}), 200
 
