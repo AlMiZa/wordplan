@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUser } from '@/contexts/UserContext'
 import { TARGET_LANGUAGES, type TargetLanguage } from '@/types/languages'
@@ -55,34 +62,34 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
   }
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent className="w-full sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Select Your Target Language</SheetTitle>
-          <SheetDescription>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Select Your Target Language</DialogTitle>
+          <DialogDescription>
             {isFirstTime
               ? 'Welcome! Please choose the language you want to learn. This will personalize your experience.'
               : 'Choose the language you want to learn. Phrases will be generated in both English and your target language.'
             }
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="mt-6 space-y-3">
+        <div className="mt-4 space-y-2">
           {Object.entries(TARGET_LANGUAGES).map(([key, { name, flag }]) => {
             const isSelected = selectedLanguage === key
             return (
               <Button
                 key={key}
                 variant={isSelected ? "default" : "outline"}
-                className={`w-full h-auto py-4 px-6 justify-start text-left transition-colors ${
+                className={`w-full h-auto py-3 px-4 justify-start text-left transition-colors ${
                   isSelected ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'hover:bg-accent'
                 }`}
                 onClick={() => setSelectedLanguage(key as TargetLanguage)}
               >
-                <span className="text-3xl mr-4">{flag}</span>
-                <span className="text-lg font-medium">{name}</span>
+                <span className="text-2xl mr-3">{flag}</span>
+                <span className="text-base font-medium">{name}</span>
                 {isSelected && (
-                  <span className="ml-auto text-xl">✓</span>
+                  <span className="ml-auto text-lg">✓</span>
                 )}
               </Button>
             )
@@ -90,18 +97,18 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
         </div>
 
         {isFirstTime && (
-          <p className="mt-6 text-sm text-muted-foreground">
+          <p className="mt-4 text-xs text-muted-foreground">
             You can always change this preference later in Settings.
           </p>
         )}
 
         {error && (
-          <div className="mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
-            <p className="text-sm text-destructive">{error}</p>
+          <div className="mt-3 p-2 bg-destructive/10 border border-destructive/20 rounded-md">
+            <p className="text-xs text-destructive">{error}</p>
           </div>
         )}
 
-        <SheetFooter className="mt-6 gap-2 sm:gap-0">
+        <DialogFooter className="mt-4 gap-2">
           <Button
             variant="outline"
             onClick={handleCancel}
@@ -115,8 +122,8 @@ export function LanguageSelectionModal({ open, onOpenChange, isFirstTime = false
           >
             {isSaving ? 'Saving...' : 'OK'}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
