@@ -1,4 +1,6 @@
 import { useWords } from '@/hooks/use-words'
+import { PronunciationTipsModal } from '@/components/PronunciationTipsModal'
+import type { PronunciationTipsResponse } from '@/lib/ai-service'
 import {
   Table,
   TableBody,
@@ -9,6 +11,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState, useCallback } from 'react'
 
 export default function WordsPage() {
   const {
@@ -21,6 +24,20 @@ export default function WordsPage() {
     goToPreviousPage,
   } = useWords()
 
+  const [selectedWord, setSelectedWord] = useState<string | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [pronunciationCache, setPronunciationCache] = useState<Map<string, PronunciationTipsResponse>>(new Map())
+
+  // Cache pronunciation tips when fetched
+  const handleCacheTips = useCallback((word: string, data: PronunciationTipsResponse) => {
+    setPronunciationCache(prev => new Map(prev).set(word, data))
+  }, [])
+
+  // Get cached tips for a word
+  const getCachedTips = useCallback((word: string): PronunciationTipsResponse | undefined => {
+    return pronunciationCache.get(word)
+  }, [pronunciationCache])
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -29,6 +46,11 @@ export default function WordsPage() {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const handlePronunciationClick = (word: string) => {
+    setSelectedWord(word)
+    setIsModalOpen(true)
   }
 
   return (
@@ -66,7 +88,20 @@ export default function WordsPage() {
                         <TableCell className="font-mono text-xs">
                           {word.id.slice(0, 8)}...
                         </TableCell>
-                        <TableCell className="font-medium">{word.word}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center justify-between">
+                            <span>{word.word}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handlePronunciationClick(word.word)}
+                              className="ml-2 h-8 w-8 p-0"
+                              title="Get pronunciation tips"
+                            >
+                              💡
+                            </Button>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right text-muted-foreground">
                           {formatDate(word.created_at)}
                         </TableCell>
@@ -104,6 +139,16 @@ export default function WordsPage() {
           )}
         </CardContent>
       </Card>
+
+      {selectedWord && (
+        <PronunciationTipsModal
+          open={isModalOpen}
+          onOpenChange={setIsModalOpen}
+          word={selectedWord}
+          cachedData={getCachedTips(selectedWord)}
+          onCacheData={handleCacheTips}
+        />
+      )}
     </div>
   )
 }

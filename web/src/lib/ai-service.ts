@@ -9,6 +9,15 @@ export interface RandomPhraseResponse {
   words_used: string[]
 }
 
+export interface PronunciationTipsResponse {
+  word: string
+  phonetic_transcription: string
+  syllables: string[]
+  pronunciation_tips: string[]
+  memory_aids: string[]
+  common_mistakes: string[]
+}
+
 /**
  * Generate a random phrase using the AI service
  * @param words - Array of words to use in the phrase
@@ -34,6 +43,35 @@ export async function generateRandomPhrase(words: string[]): Promise<RandomPhras
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
     throw new Error(errorData.error || `Failed to generate phrase: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Get pronunciation tips for a word
+ * @param word - The word to get pronunciation tips for
+ * @returns Promise with pronunciation tips data
+ */
+export async function getPronunciationTips(word: string): Promise<PronunciationTipsResponse> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to get pronunciation tips')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/pronunciation-tips`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ word }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Failed to get pronunciation tips: ${response.statusText}`)
   }
 
   return response.json()

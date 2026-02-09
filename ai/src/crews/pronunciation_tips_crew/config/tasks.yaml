@@ -1,0 +1,16 @@
+pronunciation_analysis_task:
+  description: |
+    Analyze the word "{word}" and provide comprehensive pronunciation guidance.
+
+    For the given word, provide:
+    1. IPA phonetic transcription (using standard IPA notation)
+    2. Syllable breakdown (list of syllables)
+    3. 3-5 practical pronunciation tips for learners
+    4. 2-3 creative memory aids to help remember pronunciation
+    5. 2-3 common pronunciation mistakes to avoid
+
+    Focus on clear, learner-friendly explanations suitable for language learners.
+  expected_output: |
+    A comprehensive pronunciation analysis with phonetic transcription,
+    syllable breakdown, pronunciation tips, memory aids, and common mistakes
+  agent: pronunciation_expert

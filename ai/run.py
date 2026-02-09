@@ -11,6 +11,8 @@ from supabase import create_client, Client
 
 from crews.random_phrase_crew.crew import RandomPhraseCrew
 from crews.random_phrase_crew.schemas import PhraseOutput
+from crews.pronunciation_tips_crew.crew import PronunciationTipsCrew
+from crews.pronunciation_tips_crew.schemas import PronunciationTipsOutput
 
 from lib.tracer import traceable
 
@@ -138,6 +140,33 @@ async def generate_random_phrase(words: list[str], user_context: str, target_lan
     return PhraseOutput(phrase=str(result), words_used=words)
 
 
+@traceable
+async def generate_pronunciation_tips(word: str) -> PronunciationTipsOutput:
+    """
+    Generate pronunciation tips for a single word using the PronunciationTipsCrew.
+
+    Args:
+        word: The word to analyze
+
+    Returns:
+        PronunciationTipsOutput with pronunciation guidance
+    """
+    inputs = {'word': word}
+    result = await PronunciationTipsCrew().crew().kickoff_async(inputs=inputs)
+
+    if hasattr(result, 'pydantic'):
+        return result.pydantic
+
+    return PronunciationTipsOutput(
+        word=word,
+        phonetic_transcription="/ˈwɜːrd/",
+        syllables=[word],
+        pronunciation_tips=["Focus on clear pronunciation"],
+        memory_aids=["Remember the spelling"],
+        common_mistakes=[]
+    )
+
+
 @app.route("/health", methods=["GET"])
 async def health():
     """Health check endpoint."""
@@ -257,6 +286,47 @@ async def update_target_language():
 
     except Exception as e:
         logger.error(f"Error updating target language: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/pronunciation-tips", methods=["POST"])
+@require_auth
+async def get_pronunciation_tips():
+    """
+    Generate pronunciation tips for a word.
+
+    Request body:
+        {"word": "example"}
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "word": "example",
+            "phonetic_transcription": "/ɪɡˈzæmpəl/",
+            "syllables": ["ex", "am", "ple"],
+            "pronunciation_tips": ["...", "..."],
+            "memory_aids": ["...", "..."],
+            "common_mistakes": ["..."]
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "word" not in data:
+            return jsonify({"error": "Request body must include 'word' field"}), 400
+
+        word = data.get("word", "").strip()
+
+        if not word:
+            return jsonify({"error": "'word' cannot be empty"}), 400
+
+        result = await generate_pronunciation_tips(word)
+        return jsonify(result.model_dump()), 200
+
+    except Exception as e:
+        logger.error(f"Error generating pronunciation tips: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 
