@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import warnings
 from functools import wraps
@@ -13,6 +14,13 @@ from crews.random_phrase_crew.schemas import PhraseOutput
 
 from lib.tracer import traceable
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 # Initialize Flask app
@@ -21,22 +29,20 @@ app = Flask(__name__)
 # Configure CORS - allow requests from localhost frontend
 CORS(app, resources={
     r"/api/*": {
-        "origins": [
-            "http://localhost:5173",  # Vite dev server
-            "http://localhost:3000",  # Alternative port
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000"
-        ],
+        "origins": "*",  # Allow all origins for development
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"],
-        "supports_credentials": True
+        "supports_credentials": False  # Cannot use credentials with wildcard origin
     }
 })
 
 # Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL", "http://127.0.0.1:54321")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+# Create a service role client for admin operations (bypasses RLS)
+supabase_admin: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
 def require_auth(f):
@@ -69,43 +75,57 @@ def require_auth(f):
     return decorated_function
 
 
-async def get_user_context(user_id: str) -> Optional[str]:
+async def get_user_context(user_id: str) -> tuple[Optional[str], Optional[str]]:
     """
-    Fetch user context from Supabase.
+    Fetch user context and target language from Supabase.
+    Uses service role client to bypass RLS and ensure access.
 
     Args:
         user_id: The user's UUID
 
     Returns:
-        User context string or None if not found
+        Tuple of (user_context, target_language) or (None, None) if not found
     """
     try:
-        # Fetch user context from the profiles table
-        response = supabase.table("profiles").select("context").eq("id", user_id).single().execute()
+        # Use service role client to bypass RLS and fetch profile
+        # This ensures we can always read the user's profile
+        response = supabase_admin.table("profiles").select("context", "target_language").eq("id", user_id).execute()
 
-        if response.data:
-            return response.data.get("context", "")
-        return None
+        if response.data and len(response.data) > 0:
+            logger.debug(f"Found profile for user {user_id}")
+            return response.data[0].get("context", ""), response.data[0].get("target_language")
+        else:
+            # Profile doesn't exist, create it with service role
+            logger.warning(f"Profile not found for user {user_id}, creating it...")
+            response = supabase_admin.table("profiles").insert({
+                "id": user_id,
+                "context": None,
+                "target_language": None
+            }).execute()
+            logger.info(f"Created profile for user {user_id}")
+            return "", None
     except Exception as e:
-        print(f"Error fetching user context: {e}")
-        return None
+        logger.error(f"Error fetching user context: {e}", exc_info=True)
+        return None, None
 
 
 @traceable
-async def generate_random_phrase(words: list[str], user_context: str) -> PhraseOutput:
+async def generate_random_phrase(words: list[str], user_context: str, target_language: Optional[str] = None) -> PhraseOutput:
     """
     Generate a random phrase using the RandomPhraseCrew.
 
     Args:
         words: List of words to use in the phrase
         user_context: User context to personalize the phrase
+        target_language: Target language for bilingual output (polish, belarusian, italian)
 
     Returns:
-        PhraseOutput with phrase and words used
+        PhraseOutput with phrase, translation, and words used
     """
     inputs = {
         'words': jsonify(words).get_data(as_text=True),
-        'user_context': jsonify(user_context).get_data(as_text=True)
+        'user_context': jsonify(user_context).get_data(as_text=True),
+        'target_language': jsonify(target_language).get_data(as_text=True)
     }
 
     result = await RandomPhraseCrew().crew().kickoff_async(inputs=inputs)
@@ -141,6 +161,8 @@ async def get_random_phrase():
     Response:
         {
             "phrase": "generated phrase",
+            "phrase_target_lang": "translation or null",
+            "target_language": "language code or null",
             "words_used": ["word1", "word2"]
         }
     """
@@ -158,14 +180,83 @@ async def get_random_phrase():
 
         # Get user context from Supabase
         user_id = request.user.id
-        user_context = await get_user_context(user_id)
+        user_context, target_language = await get_user_context(user_id)
 
         # Generate the phrase
-        result = await generate_random_phrase(words, user_context or "")
+        result = await generate_random_phrase(words, user_context or "", target_language)
 
         return jsonify(result.model_dump()), 200
 
     except Exception as e:
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/profile/target-language", methods=["PUT"])
+@require_auth
+async def update_target_language():
+    """
+    Update the user's target language preference.
+    Creates a profile if it doesn't exist.
+
+    Request body:
+        {
+            "target_language": "polish" | "belarusian" | "italian"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "success": true,
+            "target_language": "polish"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "target_language" not in data:
+            return jsonify({"error": "Request body must include 'target_language' field"}), 400
+
+        target_language = data.get("target_language")
+
+        valid_languages = ["polish", "belarusian", "italian"]
+        if target_language not in valid_languages:
+            return jsonify({"error": f"target_language must be one of: {valid_languages}"}), 400
+
+        user_id = request.user.id
+        logger.info(f"Updating target language for user {user_id} to {target_language}")
+
+        # First, try to update the profile
+        response = supabase.table("profiles").update({"target_language": target_language}).eq("id", user_id).execute()
+        logger.info(f"Update response: {response.data}")
+
+        # If no rows were updated, the profile doesn't exist - create it
+        if response.data == [] or len(response.data) == 0:
+            logger.warning(f"Profile not found for user {user_id}, creating it...")
+            try:
+                # Use service role client to bypass RLS for profile creation
+                response = supabase_admin.table("profiles").insert({
+                    "id": user_id,
+                    "context": None,
+                    "target_language": target_language
+                }).execute()
+                logger.info(f"Profile created: {response.data}")
+            except Exception as insert_error:
+                # Profile might have been created by the trigger between our check and insert
+                if "duplicate key" in str(insert_error).lower():
+                    logger.info(f"Profile already exists (likely created by trigger), updating instead...")
+                    response = supabase_admin.table("profiles").update({
+                        "target_language": target_language
+                    }).eq("id", user_id).execute()
+                    logger.info(f"Profile updated: {response.data}")
+                else:
+                    raise insert_error
+
+        return jsonify({"success": True, "target_language": target_language}), 200
+
+    except Exception as e:
+        logger.error(f"Error updating target language: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 

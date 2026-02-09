@@ -7,6 +7,8 @@ type Word = Database['public']['Tables']['words']['Row']
 
 export interface UseRandomPhraseReturn {
   phrase: string | null
+  phraseTargetLang: string | null
+  targetLanguage: string | null
   words: Word[]
   loading: boolean
   error: Error | null
@@ -18,6 +20,8 @@ export interface UseRandomPhraseReturn {
  */
 export function useRandomPhrase(): UseRandomPhraseReturn {
   const [phrase, setPhrase] = useState<string | null>(null)
+  const [phraseTargetLang, setPhraseTargetLang] = useState<string | null>(null)
+  const [targetLanguage, setTargetLanguage] = useState<string | null>(null)
   const [words, setWords] = useState<Word[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -27,6 +31,8 @@ export function useRandomPhrase(): UseRandomPhraseReturn {
       setLoading(true)
       setError(null)
       setPhrase(null)
+      setPhraseTargetLang(null)
+      setTargetLanguage(null)
 
       // Fetch three random words from Supabase
       // Using a random ordering approach with limit
@@ -54,6 +60,8 @@ export function useRandomPhrase(): UseRandomPhraseReturn {
       const response: RandomPhraseResponse = await generateRandomPhrase(wordStrings)
 
       setPhrase(response.phrase)
+      setPhraseTargetLang(response.phrase_target_lang)
+      setTargetLanguage(response.target_language)
 
     } catch (err) {
       const error = err instanceof Error ? err : new Error('An unknown error occurred')
@@ -66,6 +74,8 @@ export function useRandomPhrase(): UseRandomPhraseReturn {
 
   return {
     phrase,
+    phraseTargetLang,
+    targetLanguage,
     words,
     loading,
     error,
