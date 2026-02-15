@@ -1,6 +1,5 @@
 import { useWords } from '@/hooks/use-words'
 import { PronunciationTipsModal } from '@/components/PronunciationTipsModal'
-import type { PronunciationTipsResponse } from '@/lib/ai-service'
 import {
   Table,
   TableBody,
@@ -11,7 +10,7 @@ import {
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 
 export default function WordsPage() {
   const {
@@ -26,17 +25,6 @@ export default function WordsPage() {
 
   const [selectedWord, setSelectedWord] = useState<string | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [pronunciationCache, setPronunciationCache] = useState<Map<string, PronunciationTipsResponse>>(new Map())
-
-  // Cache pronunciation tips when fetched
-  const handleCacheTips = useCallback((word: string, data: PronunciationTipsResponse) => {
-    setPronunciationCache(prev => new Map(prev).set(word, data))
-  }, [])
-
-  // Get cached tips for a word
-  const getCachedTips = useCallback((word: string): PronunciationTipsResponse | undefined => {
-    return pronunciationCache.get(word)
-  }, [pronunciationCache])
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -145,8 +133,6 @@ export default function WordsPage() {
           open={isModalOpen}
           onOpenChange={setIsModalOpen}
           word={selectedWord}
-          cachedData={getCachedTips(selectedWord)}
-          onCacheData={handleCacheTips}
         />
       )}
     </div>

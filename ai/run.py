@@ -140,6 +140,51 @@ async def generate_random_phrase(words: list[str], user_context: str, target_lan
     return PhraseOutput(phrase=str(result), words_used=words)
 
 
+async def get_cached_pronunciation_tips(user_id: str, word: str) -> Optional[dict]:
+    """
+    Fetch cached pronunciation tips from Supabase.
+
+    Args:
+        user_id: The user's UUID
+        word: The word to fetch cached tips for
+
+    Returns:
+        Cached pronunciation tips dict or None if not found
+    """
+    try:
+        response = supabase_admin.table("pronunciation_tips_cache").select("*").eq("user_id", user_id).eq("word", word).execute()
+        if response.data and len(response.data) > 0:
+            return response.data[0]
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching cached pronunciation tips: {e}")
+        return None
+
+
+async def save_pronunciation_tips_cache(user_id: str, tips: PronunciationTipsOutput) -> None:
+    """
+    Save pronunciation tips to cache.
+
+    Args:
+        user_id: The user's UUID
+        tips: The pronunciation tips to cache
+    """
+    try:
+        cache_data = {
+            "user_id": user_id,
+            "word": tips.word,
+            "phonetic_transcription": tips.phonetic_transcription,
+            "syllables": tips.syllables,
+            "pronunciation_tips": tips.pronunciation_tips,
+            "memory_aids": tips.memory_aids,
+            "common_mistakes": tips.common_mistakes
+        }
+        supabase_admin.table("pronunciation_tips_cache").upsert(cache_data, on_conflict="user_id,word").execute()
+        logger.info(f"Cached pronunciation tips for word: {tips.word}")
+    except Exception as e:
+        logger.error(f"Error saving pronunciation tips cache: {e}")
+
+
 @traceable
 async def generate_pronunciation_tips(word: str) -> PronunciationTipsOutput:
     """
@@ -308,7 +353,8 @@ async def get_pronunciation_tips():
             "syllables": ["ex", "am", "ple"],
             "pronunciation_tips": ["...", "..."],
             "memory_aids": ["...", "..."],
-            "common_mistakes": ["..."]
+            "common_mistakes": ["..."],
+            "cached": true/false
         }
     """
     try:
@@ -322,8 +368,30 @@ async def get_pronunciation_tips():
         if not word:
             return jsonify({"error": "'word' cannot be empty"}), 400
 
+        user_id = request.user.id
+
+        # Check cache first
+        cached = await get_cached_pronunciation_tips(user_id, word)
+        if cached:
+            logger.info(f"Cache hit for word: {word}")
+            return jsonify({
+                "word": cached["word"],
+                "phonetic_transcription": cached["phonetic_transcription"],
+                "syllables": cached["syllables"],
+                "pronunciation_tips": cached["pronunciation_tips"],
+                "memory_aids": cached["memory_aids"],
+                "common_mistakes": cached["common_mistakes"],
+                "cached": True
+            }), 200
+
+        # Cache miss - generate new tips
+        logger.info(f"Cache miss for word: {word}, generating...")
         result = await generate_pronunciation_tips(word)
-        return jsonify(result.model_dump()), 200
+
+        # Save to cache
+        await save_pronunciation_tips_cache(user_id, result)
+
+        return jsonify({**result.model_dump(), "cached": False}), 200
 
     except Exception as e:
         logger.error(f"Error generating pronunciation tips: {e}", exc_info=True)

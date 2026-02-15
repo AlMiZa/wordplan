@@ -16,6 +16,7 @@ export interface PronunciationTipsResponse {
   pronunciation_tips: string[]
   memory_aids: string[]
   common_mistakes: string[]
+  cached?: boolean
 }
 
 /**
