@@ -232,6 +232,36 @@ export async function deleteChat(chatId: string): Promise<void> {
 }
 
 /**
+ * Rename a chat
+ * @param chatId - The ID of the chat to rename
+ * @param title - The new title for the chat
+ * @returns Promise with the updated chat
+ */
+export async function renameChat(chatId: string, title: string): Promise<Chat> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to rename chat')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/chats/${chatId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ title }),
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Failed to rename chat: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
  * Get messages for a chat
  * @param chatId - The ID of the chat
  * @returns Promise with list of messages

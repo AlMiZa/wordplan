@@ -3,6 +3,7 @@ import {
   getChats,
   createChat,
   deleteChat,
+  renameChat,
   sendChatMessage,
   getChatMessages,
   type Chat,
@@ -87,6 +88,27 @@ export function useChat() {
     }
   }, [currentChat])
 
+  const handleRenameChat = useCallback(async (chatId: string, title: string) => {
+    try {
+      const updatedChat = await renameChat(chatId, title)
+
+      // Update the chat in the list
+      setChats((prev) =>
+        prev.map((c) => (c.id === chatId ? updatedChat : c))
+      )
+
+      // Update current chat if it's the one being renamed
+      if (currentChat?.id === chatId) {
+        setCurrentChat(updatedChat)
+      }
+
+      return updatedChat
+    } catch (error) {
+      console.error('Failed to rename chat:', error)
+      throw error
+    }
+  }, [currentChat])
+
   const sendMessage = useCallback(async (message: string) => {
     if (sending) return
 
@@ -149,6 +171,7 @@ export function useChat() {
     createNewChat,
     selectChat,
     deleteChat: handleDeleteChat,
+    renameChat: handleRenameChat,
     sendMessage,
   }
 }

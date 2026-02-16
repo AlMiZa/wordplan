@@ -16,6 +16,7 @@ export default function ChatPage() {
     createNewChat,
     selectChat,
     deleteChat,
+    renameChat,
     sendMessage,
   } = useChat()
 
@@ -44,6 +45,7 @@ export default function ChatPage() {
         onSelectChat={selectChat}
         onNewChat={handleNewChat}
         onDeleteChat={deleteChat}
+        onRenameChat={renameChat}
       />
 
       {/* Main chat area */}

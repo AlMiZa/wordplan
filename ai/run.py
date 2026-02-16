@@ -696,6 +696,59 @@ async def delete_chat(chat_id: str):
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 
+@app.route("/api/chats/<chat_id>", methods=["PUT"])
+@require_auth
+async def update_chat(chat_id: str):
+    """
+    Update a chat's title.
+
+    Request body:
+        {
+            "title": "new chat title"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "uuid",
+            "user_id": "uuid",
+            "title": "new chat title",
+            "created_at": "timestamp",
+            "updated_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "title" not in data:
+            return jsonify({"error": "Request body must include 'title' field"}), 400
+
+        title = data.get("title")
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Update the chat title
+        response = supabase_admin.table("chats").update({"title": title}) \
+            .eq("id", chat_id) \
+            .execute()
+
+        return jsonify(response.data[0]), 200
+
+    except Exception as e:
+        logger.error(f"Error updating chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
 @app.route("/api/chats/<chat_id>/messages", methods=["GET"])
 @require_auth
 async def get_chat_messages(chat_id: str):

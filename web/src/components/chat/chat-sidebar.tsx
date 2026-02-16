@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { IconMessage, IconTrash, IconPlus } from '@tabler/icons-react'
+import { useState, KeyboardEvent, useRef, useEffect } from 'react'
+import { IconMessage, IconTrash, IconPlus, IconCheck, IconX } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Chat } from '@/lib/ai-service'
@@ -11,6 +11,7 @@ interface ChatSidebarProps {
   onSelectChat: (chatId: string) => void
   onNewChat: () => void
   onDeleteChat: (chatId: string) => void
+  onRenameChat?: (chatId: string, newTitle: string) => void
 }
 
 export function ChatSidebar({
@@ -20,7 +21,46 @@ export function ChatSidebar({
   onSelectChat,
   onNewChat,
   onDeleteChat,
+  onRenameChat,
 }: ChatSidebarProps) {
+  const [editingChatId, setEditingChatId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingChatId && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editingChatId])
+
+  const startEditing = (chat: Chat) => {
+    setEditingChatId(chat.id)
+    setEditTitle(chat.title || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingChatId(null)
+    setEditTitle('')
+  }
+
+  const saveEdit = (chatId: string) => {
+    const newTitle = editTitle.trim()
+    if (newTitle && onRenameChat) {
+      onRenameChat(chatId, newTitle)
+    }
+    cancelEditing()
+  }
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>, chatId: string) => {
+    if (e.key === 'Enter') {
+      saveEdit(chatId)
+    } else if (e.key === 'Escape') {
+      cancelEditing()
+    }
+  }
+
   return (
     <div className="flex h-full w-60 flex-col border-r bg-muted/10">
       {/* Header */}
@@ -59,24 +99,80 @@ export function ChatSidebar({
                     : 'hover:bg-muted/50'
                 }`}
               >
-                <button
-                  onClick={() => onSelectChat(chat.id)}
-                  className="flex-1 truncate text-left"
-                >
-                  {chat.title || 'New Chat'}
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDeleteChat(chat.id)
-                  }}
-                  title="Delete chat"
-                >
-                  <IconTrash className="h-3 w-3" />
-                </Button>
+                {editingChatId === chat.id ? (
+                  // Edit mode
+                  <div className="flex flex-1 items-center gap-1">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, chat.id)}
+                      className="flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        saveEdit(chat.id)
+                      }}
+                      title="Save"
+                    >
+                      <IconCheck className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        cancelEditing()
+                      }}
+                      title="Cancel"
+                    >
+                      <IconX className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  // View mode
+                  <>
+                    <button
+                      onClick={() => onSelectChat(chat.id)}
+                      onDoubleClick={() => startEditing(chat)}
+                      className="flex-1 truncate text-left"
+                      title={chat.title || 'New Chat'}
+                    >
+                      {chat.title || 'New Chat'}
+                    </button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        startEditing(chat)
+                      }}
+                      title="Rename chat"
+                    >
+                      <IconMessage className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDeleteChat(chat.id)
+                      }}
+                      title="Delete chat"
+                    >
+                      <IconTrash className="h-3 w-3" />
+                    </Button>
+                  </>
+                )}
               </div>
             ))
           )}
