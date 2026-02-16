@@ -258,3 +258,66 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
 
   return response.json()
 }
+
+// Word pairs types
+export interface WordPair {
+  id: string
+  user_id: string
+  source_word: string
+  translated_word: string
+  context_sentence: string | null
+  created_at: string
+}
+
+/**
+ * Get all word pairs for the current user
+ * @returns Promise with list of word pairs
+ */
+export async function getWordPairs(): Promise<WordPair[]> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to get word pairs')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/word-pairs`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Failed to get word pairs: ${response.statusText}`)
+  }
+
+  return response.json()
+}
+
+/**
+ * Delete a word pair
+ * @param wordPairId - The ID of the word pair to delete
+ * @returns Promise that resolves when the word pair is deleted
+ */
+export async function deleteWordPair(wordPairId: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    throw new Error('User must be authenticated to delete word pair')
+  }
+
+  const response = await fetch(`${AI_SERVICE_URL}/api/word-pairs/${wordPairId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    },
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(errorData.error || `Failed to delete word pair: ${response.statusText}`)
+  }
+}

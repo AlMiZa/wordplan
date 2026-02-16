@@ -727,6 +727,75 @@ async def get_chat_messages(chat_id: str):
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 
+@app.route("/api/word-pairs", methods=["GET"])
+@require_auth
+async def get_word_pairs():
+    """
+    Get all word pairs for the current user.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "user_id": "uuid",
+                "source_word": "word",
+                "translated_word": "translation",
+                "context_sentence": "example",
+                "created_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        response = supabase_admin.table("word_pairs").select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        return jsonify(response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching word pairs: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/word-pairs/<word_pair_id>", methods=["DELETE"])
+@require_auth
+async def delete_word_pair(word_pair_id: str):
+    """
+    Delete a word pair.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {"success": true}
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the word pair belongs to the user
+        word_pair_response = supabase_admin.table("word_pairs").select("*") \
+            .eq("id", word_pair_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not word_pair_response.data:
+            return jsonify({"error": "Word pair not found"}), 404
+
+        # Delete the word pair
+        supabase_admin.table("word_pairs").delete().eq("id", word_pair_id).execute()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting word pair: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     # Run the Flask app
     port = int(os.getenv("PORT", 8000))
