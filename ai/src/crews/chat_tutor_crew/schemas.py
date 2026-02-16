@@ -22,3 +22,18 @@ class TutorResponse(BaseModel):
         None,
         description="List of tool calls the agent wants to make"
     )
+
+
+class RoutingDecision(BaseModel):
+    """Output from the router agent indicating which specialist should handle the request"""
+    should_respond: bool = Field(description="Whether the request is language-related and should be handled")
+    agent: Optional[Literal["translation", "vocabulary"]] = Field(
+        None,
+        description="Which specialist agent should handle the request"
+    )
+    rejection_reason: Optional[str] = Field(
+        None,
+        description="Reason for declining if should_respond is false"
+    )
+    user_request: str = Field(description="Summary of the user's original request")
+    context_for_agent: str = Field(description="Detailed context for the specialized agent")
