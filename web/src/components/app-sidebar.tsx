@@ -4,6 +4,8 @@ import {
   IconDatabase,
   IconInnerShadowTop,
   IconSparkles,
+  IconMessage,
+  IconCards,
 } from "@tabler/icons-react"
 
 import { NavDocuments } from "@/components/nav-documents"
@@ -43,6 +45,16 @@ const data = {
       name: "Random Phrase",
       url: "/random-phrase",
       icon: IconSparkles,
+    },
+    {
+      name: "Chat",
+      url: "/chat",
+      icon: IconMessage,
+    },
+    {
+      name: "Flashcards",
+      url: "/flashcards",
+      icon: IconCards,
     },
   ],
 }

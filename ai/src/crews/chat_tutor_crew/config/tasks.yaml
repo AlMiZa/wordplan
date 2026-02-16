@@ -1,0 +1,97 @@
+route_task:
+  description: >
+    Analyze the user's message and determine which specialized agent should handle it.
+
+    User message: {user_message}
+    Target language: {target_language}
+    User context: {user_context}
+
+    Conversation history:
+    {conversation_history}
+
+    Your task:
+    1. Understand what the user is asking for
+    2. Check if this is a language-learning related request
+    3. If it's NOT language-related, set should_respond to false and set rejection_reason
+    4. If it IS language-related, determine which agent should handle it:
+       - Translation requests: Set agent to "translation"
+       - Vocabulary requests: Set agent to "vocabulary"
+       - Grammar questions: Set agent to "translation" (can handle explanations)
+       - General help: Set agent to "translation"
+    5. Set up the delegation parameters for the chosen agent
+
+    Important boundaries:
+    - Only respond to language-learning questions
+    - Politely decline off-topic requests (e.g., weather, news, general knowledge)
+    - When declining, suggest a language-related alternative
+  expected_output: >
+    A JSON object with the following structure:
+    {
+      "should_respond": true/false,
+      "agent": "translation" | "vocabulary" | null,
+      "rejection_reason": "reason if declining" | null,
+      "user_request": "original request summary",
+      "context_for_agent": "detailed context for the specialized agent"
+    }
+  agent: router_agent
+
+translation_task:
+  description: >
+    Handle a translation request from the user.
+
+    User request: {user_request}
+    Target language: {target_language}
+    User context: {user_context}
+
+    Your task:
+    1. Provide the translation with accurate spelling and characters
+    2. Include helpful context about grammar, usage, or cultural nuances
+    3. Offer to save the word pair to the user's flashcard deck
+    4. If appropriate, use the save_word_pair tool to save the word
+
+    You have access to the save_word_pair tool which can save word pairs
+    to the user's flashcard deck. Use it when the user might want to remember
+    the translation.
+
+    IMPORTANT: You must return your response as a JSON object with:
+    - response_type: MUST be one of "text", "word_suggestion", "save_confirmation", or "error"
+      For translation responses, use "text"
+    - content: Your response text
+    - tool_calls: Optional list of tool calls (e.g., save_word_pair)
+  expected_output: >
+    A JSON object with response_type (use "text" for translations), content, and optional tool_calls.
+  agent: translation_agent
+  depends_on: route_task
+  context_mapping:
+    user_request: "{route_task.user_request}"
+    target_language: "{target_language}"
+    user_context: "{user_context}"
+
+vocabulary_task:
+  description: >
+    Suggest a new vocabulary word for the user to learn.
+
+    User request: {user_request}
+    Target language: {target_language}
+    User context: {user_context}
+
+    Your task:
+    1. Select an appropriate vocabulary word based on the target language
+    2. Provide the word, its translation, and an example sentence
+    3. Make the word practical and useful for language learners
+    4. Include a tool_call for "save_word_pair" to add the word to their deck
+
+    You have access to the save_word_pair tool which can save word pairs
+    to the user's flashcard deck. Always use it for vocabulary suggestions.
+
+    Return your response as a JSON object with response_type="word_suggestion",
+    data containing word/translation/example, and tool_calls for saving the word.
+  expected_output: >
+    A JSON object with response_type="word_suggestion", data with word details,
+    and tool_calls for saving the word to the flashcard deck.
+  agent: vocabulary_agent
+  depends_on: route_task
+  context_mapping:
+    user_request: "{route_task.user_request}"
+    target_language: "{target_language}"
+    user_context: "{user_context}"
