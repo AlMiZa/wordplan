@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { IconArrowLeft, IconArrowRight, IconRotateCw } from '@tabler/icons-react'
+import { IconArrowLeft, IconArrowRight, IconRefresh } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { FlashcardCard } from './flashcard-card'
 import type { WordPair } from '@/lib/ai-service'
@@ -111,7 +111,7 @@ export function FlashcardStudy({ wordPairs, onExit }: FlashcardStudyProps) {
           onClick={handleShuffle}
           disabled={currentIndex === wordPairs.length - 1}
         >
-          <IconRotateCw className="mr-2 h-4 w-4" />
+          <IconRefresh className="mr-2 h-4 w-4" />
           Mark as Learned
         </Button>
 
@@ -133,7 +133,7 @@ export function FlashcardStudy({ wordPairs, onExit }: FlashcardStudyProps) {
             🎉 You've studied all {wordPairs.length} cards!
           </p>
           <Button variant="outline" onClick={handleRestart}>
-            <IconRotateCw className="mr-2 h-4 w-4" />
+            <IconRefresh className="mr-2 h-4 w-4" />
             Study Again
           </Button>
         </div>

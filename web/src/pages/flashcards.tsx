@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { IconGraduationCap, IconList, IconBookOpen } from '@tabler/icons-react'
+import { IconSchool, IconList, IconBook } from '@tabler/icons-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -54,7 +54,7 @@ export default function FlashcardsPage() {
             My Flashcards
           </TabsTrigger>
           <TabsTrigger value="study" disabled={wordPairs.length === 0}>
-            <IconGraduationCap className="mr-2 h-4 w-4" />
+            <IconSchool className="mr-2 h-4 w-4" />
             Study Mode
           </TabsTrigger>
         </TabsList>
@@ -95,7 +95,7 @@ export default function FlashcardsPage() {
                   disabled={wordPairs.length === 0}
                   className="w-full"
                 >
-                  <IconGraduationCap className="mr-2 h-4 w-4" />
+                  <IconSchool className="mr-2 h-4 w-4" />
                   Start Study
                 </Button>
               </CardContent>
@@ -125,14 +125,14 @@ export default function FlashcardsPage() {
               {wordPairs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                    <IconBookOpen className="h-8 w-8 text-muted-foreground" />
+                    <IconBook className="h-8 w-8 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold mb-2">No flashcards yet</h3>
                   <p className="text-sm text-muted-foreground mb-6">
                     Start chatting to save vocabulary words to your flashcard deck.
                   </p>
                   <Button onClick={handleStartChat}>
-                    <IconBookOpen className="mr-2 h-4 w-4" />
+                    <IconBook className="mr-2 h-4 w-4" />
                     Go to Chat
                   </Button>
                 </div>
@@ -142,7 +142,7 @@ export default function FlashcardsPage() {
                     size="lg"
                     onClick={() => setStudyMode(true)}
                   >
-                    <IconGraduationCap className="mr-2 h-4 w-4" />
+                    <IconSchool className="mr-2 h-4 w-4" />
                     Start Study Session
                   </Button>
                 </div>
