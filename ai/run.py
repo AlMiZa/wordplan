@@ -413,9 +413,13 @@ async def handle_tool_call(tool_name: str, arguments: dict, user_id: str) -> str
         Result message from the tool execution
     """
     if tool_name == "save_word_pair":
-        source_word = arguments.get("source_word")
-        translated_word = arguments.get("translated_word")
-        context_sentence = arguments.get("context_sentence")
+        # Inject user_id into arguments if not already present
+        # This handles both manual tool calls and CrewAI agent tool calls
+        arguments_with_user = {**arguments, "user_id": user_id}
+
+        source_word = arguments_with_user.get("source_word")
+        translated_word = arguments_with_user.get("translated_word")
+        context_sentence = arguments_with_user.get("context_sentence")
 
         if not source_word or not translated_word:
             return "Error: Both source_word and translated_word are required to save a word pair."
@@ -431,14 +435,22 @@ async def handle_tool_call(tool_name: str, arguments: dict, user_id: str) -> str
             return f"'{source_word}' is already in your flashcard deck!"
 
         # Insert new word pair
-        supabase_admin.table("word_pairs").insert({
+        word_pair_data = {
             "user_id": user_id,
             "source_word": source_word,
             "translated_word": translated_word,
-            "context_sentence": context_sentence
-        }).execute()
+        }
 
-        return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck."
+        if context_sentence:
+            word_pair_data["context_sentence"] = context_sentence
+
+        supabase_admin.table("word_pairs").insert(word_pair_data).execute()
+
+        # Return user-friendly confirmation
+        if context_sentence:
+            return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck. Example: {context_sentence}"
+        else:
+            return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck."
 
     return f"Unknown tool: {tool_name}"
 
@@ -506,12 +518,13 @@ async def send_chat_message():
                 content_str = str(content)
             history_text += f"{role.capitalize()}: {content_str}\n"
 
-        # Run the ChatTutorCrew
+        # Run the ChatTutorCrew with user_id for tool context
         inputs = {
             'user_message': jsonify(message).get_data(as_text=True),
             'target_language': jsonify(target_language if target_language else "None").get_data(as_text=True),
             'user_context': jsonify(user_context if user_context else "").get_data(as_text=True),
-            'conversation_history': jsonify(history_text if history_text else "No previous messages").get_data(as_text=True)
+            'conversation_history': jsonify(history_text if history_text else "No previous messages").get_data(as_text=True),
+            'user_id': user_id  # Pass user_id so tools can access it
         }
 
         result = await ChatTutorCrew().crew().kickoff_async(inputs=inputs)

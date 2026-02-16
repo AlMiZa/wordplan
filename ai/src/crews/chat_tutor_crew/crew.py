@@ -4,6 +4,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from typing import List, Optional
 from src.crews.base.llm import DEFAULT_LLM
 from src.crews.chat_tutor_crew.schemas import TutorResponse
+from src.crews.chat_tutor_crew.tools import save_word_pair_tool
 
 
 @CrewBase
@@ -23,14 +24,16 @@ class ChatTutorCrew():
     def translation_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['translation_agent'],
-            llm=DEFAULT_LLM
+            llm=DEFAULT_LLM,
+            tools=[save_word_pair_tool]
         )
 
     @agent
     def vocabulary_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['vocabulary_agent'],
-            llm=DEFAULT_LLM
+            llm=DEFAULT_LLM,
+            tools=[save_word_pair_tool]
         )
 
     @task
