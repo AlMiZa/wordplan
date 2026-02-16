@@ -8,7 +8,6 @@ from typing import Optional
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
-from crewai import Crew, Process
 
 from src.crews.random_phrase_crew.crew import RandomPhraseCrew
 from src.crews.random_phrase_crew.schemas import PhraseOutput
@@ -519,7 +518,9 @@ async def send_chat_message():
                 content_str = str(content)
             history_text += f"{role.capitalize()}: {content_str}\n"
 
-        # Run the ChatTutorCrew with user_id for tool context
+        # Run the ChatTutorCrew with conditional routing
+        # The crew's callback will handle routing to the appropriate specialist
+        # This creates a single Phoenix trace showing: router → specialist chain
         inputs = {
             'user_message': message,
             'target_language': target_language if target_language else "None",
@@ -528,78 +529,46 @@ async def send_chat_message():
             'user_id': user_id  # Pass user_id so tools can access it
         }
 
-        # Step 1: Run the router task to determine which specialist should handle the request
         crew_instance = ChatTutorCrew()
-        routing_result = await crew_instance.crew().kickoff_async(inputs=inputs)
+        result = await crew_instance.crew().kickoff_async(inputs=inputs)
 
-        if not hasattr(routing_result, 'pydantic'):
-            raise Exception("Router task did not return a pydantic model")
+        # Extract the final response from the last executed task
+        if hasattr(result, 'pydantic'):
+            # The result could be either RoutingDecision (if declined) or TutorResponse (if specialist ran)
+            result_model = result.pydantic
 
-        routing_decision: RoutingDecision = routing_result.pydantic
-        logger.info(f"Router decision: should_respond={routing_decision.should_respond}, agent={routing_decision.agent}")
-
-        # Step 2: Based on routing decision, execute the appropriate specialist task
-        tutor_response: TutorResponse
-
-        if not routing_decision.should_respond:
-            # Router declined the request
-            tutor_response = TutorResponse(
-                response_type="error",
-                content=routing_decision.rejection_reason or "I can only help with language-related questions.",
-                data=None,
-                tool_calls=None
-            )
-        elif routing_decision.agent == "translation":
-            # Run translation task - this will show as a separate trace in Phoenix
-            translation_inputs = {
-                **inputs,
-                'user_request': routing_decision.user_request,
-            }
-            # Use a separate crew instance with just the translation task
-            translation_crew = Crew(
-                agents=[crew_instance.translation_agent()],
-                tasks=[crew_instance.translation_task()],
-                process=Process.sequential
-            )
-            translation_result = await translation_crew.kickoff_async(inputs=translation_inputs)
-
-            if hasattr(translation_result, 'pydantic'):
-                tutor_response = translation_result.pydantic
+            # Handle rejection from router
+            if isinstance(result_model, RoutingDecision):
+                if not result_model.should_respond:
+                    tutor_response = TutorResponse(
+                        response_type="error",
+                        content=result_model.rejection_reason or "I can only help with language-related questions.",
+                        data=None,
+                        tool_calls=None
+                    )
+                else:
+                    # Router returned a decision but no specialist was executed
+                    # This shouldn't happen with callback routing, but handle gracefully
+                    tutor_response = TutorResponse(
+                        response_type="error",
+                        content="I couldn't determine how to help with that request.",
+                        data=None,
+                        tool_calls=None
+                    )
+            elif isinstance(result_model, TutorResponse):
+                tutor_response = result_model
             else:
                 tutor_response = TutorResponse(
                     response_type="text",
-                    content=str(translation_result),
-                    data=None,
-                    tool_calls=None
-                )
-        elif routing_decision.agent == "vocabulary":
-            # Run vocabulary task - this will show as a separate trace in Phoenix
-            vocabulary_inputs = {
-                **inputs,
-                'user_request': routing_decision.user_request,
-            }
-            # Use a separate crew instance with just the vocabulary task
-            vocabulary_crew = Crew(
-                agents=[crew_instance.vocabulary_agent()],
-                tasks=[crew_instance.vocabulary_task()],
-                process=Process.sequential
-            )
-            vocabulary_result = await vocabulary_crew.kickoff_async(inputs=vocabulary_inputs)
-
-            if hasattr(vocabulary_result, 'pydantic'):
-                tutor_response = vocabulary_result.pydantic
-            else:
-                tutor_response = TutorResponse(
-                    response_type="text",
-                    content=str(vocabulary_result),
+                    content=str(result_model),
                     data=None,
                     tool_calls=None
                 )
         else:
-            # Fallback - router didn't specify an agent
+            # Fallback for unexpected result format
             tutor_response = TutorResponse(
-                response_type="error",
-                content="I couldn't determine how to help with that request.",
+                response_type="text",
+                content=str(result),
                 data=None,
                 tool_calls=None
             )
