@@ -139,18 +139,10 @@ export function ChatSidebar({
                 ) : (
                   // View mode
                   <>
-                    <button
-                      onClick={() => onSelectChat(chat.id)}
-                      onDoubleClick={() => startEditing(chat)}
-                      className="flex-1 truncate text-left"
-                      title={chat.title || 'New Chat'}
-                    >
-                      {chat.title || 'New Chat'}
-                    </button>
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="h-6 w-6 opacity-50 hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
                         startEditing(chat)
@@ -162,7 +154,7 @@ export function ChatSidebar({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="h-6 w-6 opacity-50 hover:opacity-100 transition-opacity"
                       onClick={(e) => {
                         e.stopPropagation()
                         onDeleteChat(chat.id)
@@ -171,6 +163,14 @@ export function ChatSidebar({
                     >
                       <IconTrash className="h-3 w-3" />
                     </Button>
+                    <button
+                      onClick={() => onSelectChat(chat.id)}
+                      onDoubleClick={() => startEditing(chat)}
+                      className="flex-1 truncate text-left"
+                      title={chat.title || 'New Chat'}
+                    >
+                      {chat.title || 'New Chat'}
+                    </button>
                   </>
                 )}
               </div>
