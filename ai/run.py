@@ -9,12 +9,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
 
-from crews.random_phrase_crew.crew import RandomPhraseCrew
-from crews.random_phrase_crew.schemas import PhraseOutput
-from crews.pronunciation_tips_crew.crew import PronunciationTipsCrew
-from crews.pronunciation_tips_crew.schemas import PronunciationTipsOutput
+from src.crews.random_phrase_crew.crew import RandomPhraseCrew
+from src.crews.random_phrase_crew.schemas import PhraseOutput
+from src.crews.pronunciation_tips_crew.crew import PronunciationTipsCrew
+from src.crews.pronunciation_tips_crew.schemas import PronunciationTipsOutput
+from src.crews.chat_tutor_crew.crew import ChatTutorCrew
+from src.crews.chat_tutor_crew.schemas import TutorResponse
 
-from lib.tracer import traceable
+from src.lib.tracer import traceable
 
 # Configure logging
 logging.basicConfig(
@@ -395,6 +397,333 @@ async def get_pronunciation_tips():
 
     except Exception as e:
         logger.error(f"Error generating pronunciation tips: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+async def handle_tool_call(tool_name: str, arguments: dict, user_id: str) -> str:
+    """
+    Handle tool invocations from the AI agent.
+
+    Args:
+        tool_name: Name of the tool to call
+        arguments: Arguments to pass to the tool
+        user_id: The user's UUID
+
+    Returns:
+        Result message from the tool execution
+    """
+    if tool_name == "save_word_pair":
+        source_word = arguments.get("source_word")
+        translated_word = arguments.get("translated_word")
+        context_sentence = arguments.get("context_sentence")
+
+        if not source_word or not translated_word:
+            return "Error: Both source_word and translated_word are required to save a word pair."
+
+        # Check for duplicates
+        existing = supabase_admin.table("word_pairs").select("*") \
+            .eq("user_id", user_id) \
+            .eq("source_word", source_word) \
+            .eq("translated_word", translated_word) \
+            .execute()
+
+        if existing.data:
+            return f"'{source_word}' is already in your flashcard deck!"
+
+        # Insert new word pair
+        supabase_admin.table("word_pairs").insert({
+            "user_id": user_id,
+            "source_word": source_word,
+            "translated_word": translated_word,
+            "context_sentence": context_sentence
+        }).execute()
+
+        return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck."
+
+    return f"Unknown tool: {tool_name}"
+
+
+@app.route("/api/chat/message", methods=["POST"])
+@require_auth
+async def send_chat_message():
+    """
+    Send a message to the chat tutor and get an AI response.
+
+    Request body:
+        {
+            "chat_id": "uuid",
+            "message": "user message"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "message_id",
+            "chat_id": "chat_id",
+            "role": "assistant",
+            "content": {...},
+            "created_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "message" not in data:
+            return jsonify({"error": "Request body must include 'message' field"}), 400
+
+        message = data.get("message", "").strip()
+        chat_id = data.get("chat_id")
+
+        if not message:
+            return jsonify({"error": "'message' cannot be empty"}), 400
+
+        user_id = request.user.id
+
+        # Fetch conversation history if chat_id is provided
+        conversation_history = []
+        if chat_id:
+            messages_response = supabase_admin.table("chat_messages").select("*") \
+                .eq("chat_id", chat_id) \
+                .limit(20) \
+                .execute()
+
+            # Reverse to get chronological order
+            conversation_history = list(reversed(messages_response.data))
+
+        # Fetch user context
+        user_context, target_language = await get_user_context(user_id)
+
+        # Format conversation history for the AI
+        history_text = ""
+        for msg in conversation_history[-10:]:  # Last 10 messages for context
+            role = msg.get("role", "user")
+            content = msg.get("content", {})
+            if isinstance(content, dict):
+                content_str = content.get("content", str(content))
+            else:
+                content_str = str(content)
+            history_text += f"{role.capitalize()}: {content_str}\n"
+
+        # Run the ChatTutorCrew
+        inputs = {
+            'user_message': jsonify(message).get_data(as_text=True),
+            'target_language': jsonify(target_language if target_language else "None").get_data(as_text=True),
+            'user_context': jsonify(user_context if user_context else "").get_data(as_text=True),
+            'conversation_history': jsonify(history_text if history_text else "No previous messages").get_data(as_text=True)
+        }
+
+        result = await ChatTutorCrew().crew().kickoff_async(inputs=inputs)
+
+        # Extract the response
+        if hasattr(result, 'pydantic'):
+            tutor_response: TutorResponse = result.pydantic
+        else:
+            # Fallback for unexpected result format
+            tutor_response = TutorResponse(
+                response_type="text",
+                content=str(result),
+                data=None,
+                tool_calls=None
+            )
+
+        # Handle tool calls if present
+        if tutor_response.tool_calls:
+            for tool_call in tutor_response.tool_calls:
+                tool_result = await handle_tool_call(
+                    tool_call.name,
+                    tool_call.arguments,
+                    user_id
+                )
+                logger.info(f"Tool {tool_call.name} result: {tool_result}")
+
+        # Save user message to database
+        if not chat_id:
+            # Create new chat if needed
+            chat_response = supabase_admin.table("chats").insert({
+                "user_id": user_id,
+                "title": message[:50] + "..." if len(message) > 50 else message
+            }).execute()
+            chat_id = chat_response.data[0]["id"]
+
+        # Save user message
+        supabase_admin.table("chat_messages").insert({
+            "chat_id": chat_id,
+            "role": "user",
+            "content": {"content": message}
+        }).execute()
+
+        # Save assistant response
+        response_data = supabase_admin.table("chat_messages").insert({
+            "chat_id": chat_id,
+            "role": "assistant",
+            "content": tutor_response.model_dump()
+        }).execute()
+
+        # Update chat's updated_at timestamp
+        supabase_admin.table("chats").update({
+            "updated_at": "now()"
+        }).eq("id", chat_id).execute()
+
+        # Return the assistant message
+        assistant_message = response_data.data[0]
+        return jsonify(assistant_message), 200
+
+    except Exception as e:
+        logger.error(f"Error sending chat message: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats", methods=["GET"])
+@require_auth
+async def get_chats():
+    """
+    Get all chats for the current user.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "user_id": "uuid",
+                "title": "chat title",
+                "created_at": "timestamp",
+                "updated_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        response = supabase_admin.table("chats").select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        return jsonify(response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching chats: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats", methods=["POST"])
+@require_auth
+async def create_chat():
+    """
+    Create a new chat.
+
+    Request body:
+        {
+            "title": "optional title"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "uuid",
+            "user_id": "uuid",
+            "title": "title or null",
+            "created_at": "timestamp",
+            "updated_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json() or {}
+        title = data.get("title")
+        user_id = request.user.id
+
+        response = supabase_admin.table("chats").insert({
+            "user_id": user_id,
+            "title": title
+        }).execute()
+
+        return jsonify(response.data[0]), 201
+
+    except Exception as e:
+        logger.error(f"Error creating chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats/<chat_id>", methods=["DELETE"])
+@require_auth
+async def delete_chat(chat_id: str):
+    """
+    Delete a chat and all its messages.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {"success": true}
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Delete the chat (messages will be cascaded)
+        supabase_admin.table("chats").delete().eq("id", chat_id).execute()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats/<chat_id>/messages", methods=["GET"])
+@require_auth
+async def get_chat_messages(chat_id: str):
+    """
+    Get all messages for a chat.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "chat_id": "uuid",
+                "role": "user" | "assistant" | "system",
+                "content": {...},
+                "created_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Fetch messages
+        messages_response = supabase_admin.table("chat_messages").select("*") \
+            .eq("chat_id", chat_id) \
+            .execute()
+
+        return jsonify(messages_response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching chat messages: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 

@@ -1,0 +1,57 @@
+route_task:
+  description: >
+    Analy the user's message and determine the appropriate response.
+
+    User message: {user_message}
+    Target language: {target_language}
+    User context: {user_context}
+
+    Conversation history:
+    {conversation_history}
+
+    Your task:
+    1. Understand what the user is asking for
+    2. Check if this is a language-learning related request
+    3. If it's NOT language-related, politely refuse and redirect
+    4. If it IS language-related, respond appropriately:
+       - Translation requests: Provide the translation with explanation
+       - Vocabulary requests: Suggest a word with translation and example
+       - Grammar questions: Explain the grammar concept
+       - General help: Guide the user on language learning
+    5. If the user asks to save a word pair, include a tool_call for "save_word_pair"
+
+    Important boundaries:
+    - Only respond to language-learning questions
+    - Politely decline off-topic requests (e.g., weather, news, general knowledge)
+    - When declining, suggest a language-related alternative
+
+    You must return your response as a JSON object with the following structure:
+    {
+      "response_type": "text" | "word_suggestion" | "save_confirmation" | "error",
+      "content": "Your response text here",
+      "data": {
+        "word": "source_word (for word_suggestion)",
+        "translation": "translated_word (for word_suggestion)",
+        "example": "example_sentence (for word_suggestion)"
+      },
+      "tool_calls": [
+        {
+          "name": "save_word_pair",
+          "arguments": {
+            "source_word": "word in target language",
+            "translated_word": "word in user's native language",
+            "context_sentence": "example using the word"
+          }
+        }
+      ]
+    }
+
+    response_type values:
+    - "text": Regular response (translation, explanation, etc.)
+    - "word_suggestion": When suggesting a new vocabulary word
+    - "save_confirmation": When confirming a word was saved
+    - "error": When declining an off-topic request
+  expected_output: >
+    A JSON object with response_type, content, optional data (for word suggestions),
+    and optional tool_calls (for saving words).
+  agent: router_agent
