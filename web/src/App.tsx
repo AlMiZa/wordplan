@@ -9,6 +9,8 @@ import SignUpPage from './pages/signup'
 import WordsPage from './pages/words'
 import RandomPhrasePage from './pages/random-phrase'
 import SettingsPage from './pages/settings'
+import ChatPage from './pages/chat'
+import FlashcardsPage from './pages/flashcards'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +39,8 @@ function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/words" element={<WordsPage />} />
               <Route path="/random-phrase" element={<RandomPhrasePage />} />
+              <Route path="/chat" element={<ChatPage />} />
+              <Route path="/flashcards" element={<FlashcardsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
 

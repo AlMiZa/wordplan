@@ -9,12 +9,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
 
-from crews.random_phrase_crew.crew import RandomPhraseCrew
-from crews.random_phrase_crew.schemas import PhraseOutput
-from crews.pronunciation_tips_crew.crew import PronunciationTipsCrew
-from crews.pronunciation_tips_crew.schemas import PronunciationTipsOutput
+from src.crews.random_phrase_crew.crew import RandomPhraseCrew
+from src.crews.random_phrase_crew.schemas import PhraseOutput
+from src.crews.pronunciation_tips_crew.crew import PronunciationTipsCrew
+from src.crews.pronunciation_tips_crew.schemas import PronunciationTipsOutput
+from src.crews.chat_tutor_crew.crew import ChatTutorCrew
+from src.crews.chat_tutor_crew.schemas import TutorResponse, RoutingDecision
 
-from lib.tracer import traceable
+from src.lib.tracer import traceable
 
 # Configure logging
 logging.basicConfig(
@@ -395,6 +397,500 @@ async def get_pronunciation_tips():
 
     except Exception as e:
         logger.error(f"Error generating pronunciation tips: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+async def handle_tool_call(tool_name: str, arguments: dict, user_id: str) -> str:
+    """
+    Handle tool invocations from the AI agent.
+
+    Args:
+        tool_name: Name of the tool to call
+        arguments: Arguments to pass to the tool
+        user_id: The user's UUID
+
+    Returns:
+        Result message from the tool execution
+    """
+    if tool_name == "save_word_pair":
+        # Inject user_id into arguments if not already present
+        # This handles both manual tool calls and CrewAI agent tool calls
+        arguments_with_user = {**arguments, "user_id": user_id}
+
+        source_word = arguments_with_user.get("source_word")
+        translated_word = arguments_with_user.get("translated_word")
+        context_sentence = arguments_with_user.get("context_sentence")
+
+        if not source_word or not translated_word:
+            return "Error: Both source_word and translated_word are required to save a word pair."
+
+        # Check for duplicates
+        existing = supabase_admin.table("word_pairs").select("*") \
+            .eq("user_id", user_id) \
+            .eq("source_word", source_word) \
+            .eq("translated_word", translated_word) \
+            .execute()
+
+        if existing.data:
+            return f"'{source_word}' is already in your flashcard deck!"
+
+        # Insert new word pair
+        word_pair_data = {
+            "user_id": user_id,
+            "source_word": source_word,
+            "translated_word": translated_word,
+        }
+
+        if context_sentence:
+            word_pair_data["context_sentence"] = context_sentence
+
+        supabase_admin.table("word_pairs").insert(word_pair_data).execute()
+
+        # Return user-friendly confirmation
+        if context_sentence:
+            return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck. Example: {context_sentence}"
+        else:
+            return f"Done! I've added '{source_word} → {translated_word}' to your flashcard deck."
+
+    return f"Unknown tool: {tool_name}"
+
+
+@app.route("/api/chat/message", methods=["POST"])
+@require_auth
+async def send_chat_message():
+    """
+    Send a message to the chat tutor and get an AI response.
+
+    Request body:
+        {
+            "chat_id": "uuid",
+            "message": "user message"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "message_id",
+            "chat_id": "chat_id",
+            "role": "assistant",
+            "content": {...},
+            "created_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "message" not in data:
+            return jsonify({"error": "Request body must include 'message' field"}), 400
+
+        message = data.get("message", "").strip()
+        chat_id = data.get("chat_id")
+
+        if not message:
+            return jsonify({"error": "'message' cannot be empty"}), 400
+
+        user_id = request.user.id
+
+        # Fetch conversation history if chat_id is provided
+        conversation_history = []
+        if chat_id:
+            messages_response = supabase_admin.table("chat_messages").select("*") \
+                .eq("chat_id", chat_id) \
+                .limit(20) \
+                .execute()
+
+            # Reverse to get chronological order
+            conversation_history = list(reversed(messages_response.data))
+
+        # Fetch user context
+        user_context, target_language = await get_user_context(user_id)
+
+        # Format conversation history for the AI
+        history_text = ""
+        for msg in conversation_history[-10:]:  # Last 10 messages for context
+            role = msg.get("role", "user")
+            content = msg.get("content", {})
+            if isinstance(content, dict):
+                content_str = content.get("content", str(content))
+            else:
+                content_str = str(content)
+            history_text += f"{role.capitalize()}: {content_str}\n"
+
+        # Run the ChatTutorCrew with conditional routing
+        # The crew's callback will handle routing to the appropriate specialist
+        # This creates a single Phoenix trace showing: router → specialist chain
+        inputs = {
+            'user_message': message,
+            'target_language': target_language if target_language else "None",
+            'user_context': user_context if user_context else "",
+            'conversation_history': history_text if history_text else "No previous messages",
+            'user_id': user_id  # Pass user_id so tools can access it
+        }
+
+        crew_instance = ChatTutorCrew()
+        result = await crew_instance.crew().kickoff_async(inputs=inputs)
+
+        # Extract the final response from the last executed task
+        if hasattr(result, 'pydantic'):
+            # The result could be either RoutingDecision (if declined) or TutorResponse (if specialist ran)
+            result_model = result.pydantic
+
+            # Handle rejection from router
+            if isinstance(result_model, RoutingDecision):
+                if not result_model.should_respond:
+                    tutor_response = TutorResponse(
+                        response_type="error",
+                        content=result_model.rejection_reason or "I can only help with language-related questions.",
+                        data=None,
+                        tool_calls=None
+                    )
+                else:
+                    # Router returned a decision but no specialist was executed
+                    # This shouldn't happen with callback routing, but handle gracefully
+                    tutor_response = TutorResponse(
+                        response_type="error",
+                        content="I couldn't determine how to help with that request.",
+                        data=None,
+                        tool_calls=None
+                    )
+            elif isinstance(result_model, TutorResponse):
+                tutor_response = result_model
+            else:
+                tutor_response = TutorResponse(
+                    response_type="text",
+                    content=str(result_model),
+                    data=None,
+                    tool_calls=None
+                )
+        else:
+            # Fallback for unexpected result format
+            tutor_response = TutorResponse(
+                response_type="text",
+                content=str(result),
+                data=None,
+                tool_calls=None
+            )
+
+        # Handle tool calls if present
+        if tutor_response.tool_calls:
+            for tool_call in tutor_response.tool_calls:
+                tool_result = await handle_tool_call(
+                    tool_call.name,
+                    tool_call.arguments,
+                    user_id
+                )
+                logger.info(f"Tool {tool_call.name} result: {tool_result}")
+
+        # Save user message to database
+        if not chat_id:
+            # Create new chat if needed
+            chat_response = supabase_admin.table("chats").insert({
+                "user_id": user_id,
+                "title": message[:50] + "..." if len(message) > 50 else message
+            }).execute()
+            chat_id = chat_response.data[0]["id"]
+
+        # Save user message
+        supabase_admin.table("chat_messages").insert({
+            "chat_id": chat_id,
+            "role": "user",
+            "content": {"content": message}
+        }).execute()
+
+        # Save assistant response
+        response_data = supabase_admin.table("chat_messages").insert({
+            "chat_id": chat_id,
+            "role": "assistant",
+            "content": tutor_response.model_dump()
+        }).execute()
+
+        # Update chat's updated_at timestamp
+        supabase_admin.table("chats").update({
+            "updated_at": "now()"
+        }).eq("id", chat_id).execute()
+
+        # Return the assistant message
+        assistant_message = response_data.data[0]
+        return jsonify(assistant_message), 200
+
+    except Exception as e:
+        logger.error(f"Error sending chat message: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats", methods=["GET"])
+@require_auth
+async def get_chats():
+    """
+    Get all chats for the current user.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "user_id": "uuid",
+                "title": "chat title",
+                "created_at": "timestamp",
+                "updated_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        response = supabase_admin.table("chats").select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        return jsonify(response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching chats: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats", methods=["POST"])
+@require_auth
+async def create_chat():
+    """
+    Create a new chat.
+
+    Request body:
+        {
+            "title": "optional title"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "uuid",
+            "user_id": "uuid",
+            "title": "title or null",
+            "created_at": "timestamp",
+            "updated_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json() or {}
+        title = data.get("title")
+        user_id = request.user.id
+
+        response = supabase_admin.table("chats").insert({
+            "user_id": user_id,
+            "title": title
+        }).execute()
+
+        return jsonify(response.data[0]), 201
+
+    except Exception as e:
+        logger.error(f"Error creating chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats/<chat_id>", methods=["DELETE"])
+@require_auth
+async def delete_chat(chat_id: str):
+    """
+    Delete a chat and all its messages.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {"success": true}
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Delete the chat (messages will be cascaded)
+        supabase_admin.table("chats").delete().eq("id", chat_id).execute()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats/<chat_id>", methods=["PUT"])
+@require_auth
+async def update_chat(chat_id: str):
+    """
+    Update a chat's title.
+
+    Request body:
+        {
+            "title": "new chat title"
+        }
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {
+            "id": "uuid",
+            "user_id": "uuid",
+            "title": "new chat title",
+            "created_at": "timestamp",
+            "updated_at": "timestamp"
+        }
+    """
+    try:
+        data = request.get_json()
+
+        if not data or "title" not in data:
+            return jsonify({"error": "Request body must include 'title' field"}), 400
+
+        title = data.get("title")
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Update the chat title
+        response = supabase_admin.table("chats").update({"title": title}) \
+            .eq("id", chat_id) \
+            .execute()
+
+        return jsonify(response.data[0]), 200
+
+    except Exception as e:
+        logger.error(f"Error updating chat: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/chats/<chat_id>/messages", methods=["GET"])
+@require_auth
+async def get_chat_messages(chat_id: str):
+    """
+    Get all messages for a chat.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "chat_id": "uuid",
+                "role": "user" | "assistant" | "system",
+                "content": {...},
+                "created_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the chat belongs to the user
+        chat_response = supabase_admin.table("chats").select("*") \
+            .eq("id", chat_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not chat_response.data:
+            return jsonify({"error": "Chat not found"}), 404
+
+        # Fetch messages
+        messages_response = supabase_admin.table("chat_messages").select("*") \
+            .eq("chat_id", chat_id) \
+            .execute()
+
+        return jsonify(messages_response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching chat messages: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/word-pairs", methods=["GET"])
+@require_auth
+async def get_word_pairs():
+    """
+    Get all word pairs for the current user.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        [
+            {
+                "id": "uuid",
+                "user_id": "uuid",
+                "source_word": "word",
+                "translated_word": "translation",
+                "context_sentence": "example",
+                "created_at": "timestamp"
+            }
+        ]
+    """
+    try:
+        user_id = request.user.id
+
+        response = supabase_admin.table("word_pairs").select("*") \
+            .eq("user_id", user_id) \
+            .execute()
+
+        return jsonify(response.data), 200
+
+    except Exception as e:
+        logger.error(f"Error fetching word pairs: {e}", exc_info=True)
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+
+
+@app.route("/api/word-pairs/<word_pair_id>", methods=["DELETE"])
+@require_auth
+async def delete_word_pair(word_pair_id: str):
+    """
+    Delete a word pair.
+
+    Headers:
+        Authorization: Bearer <jwt_token>
+
+    Response:
+        {"success": true}
+    """
+    try:
+        user_id = request.user.id
+
+        # Verify the word pair belongs to the user
+        word_pair_response = supabase_admin.table("word_pairs").select("*") \
+            .eq("id", word_pair_id) \
+            .eq("user_id", user_id) \
+            .execute()
+
+        if not word_pair_response.data:
+            return jsonify({"error": "Word pair not found"}), 404
+
+        # Delete the word pair
+        supabase_admin.table("word_pairs").delete().eq("id", word_pair_id).execute()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting word pair: {e}", exc_info=True)
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 

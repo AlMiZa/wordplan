@@ -2,14 +2,45 @@
 
 ## Project Overview
 
-Wordpan is a full-stack AI-powered web application template demonstrating modern AI agent integration with CrewAI, Supabase, and comprehensive observability using Arize Phoenix.
+Wordpan is a full-stack AI-powered language learning application demonstrating modern AI agent integration with CrewAI, Supabase, and comprehensive observability using Arize Phoenix.
 
 ### Architecture
-- **Frontend**: React 19.1 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4
+- **Frontend**: React 19.1 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4 + Radix UI
 - **AI Backend**: Python 3.13 + Flask + CrewAI 0.201 + LiteLLM
 - **Database**: PostgreSQL via Supabase with Row-Level Security (RLS)
 - **Observability**: Arize Phoenix 12.4.0 with OpenTelemetry tracing
 - **Containerization**: Docker Compose with hot reload
+
+### Key Features
+1. **Random Phrase Generator**: Bilingual phrase generation using AI
+2. **Pronunciation Tips**: AI-powered pronunciation guidance with caching
+3. **Smart Tutor Chat**: Multi-agent conversational AI for language learning
+4. **Language Selection**: Target language preferences (Polish, Belarusian, Italian)
+5. **Flashcard System**: Save vocabulary pairs for later review
+
+### Project Structure
+```
+wordpan/
+├── ai/                    # Python AI backend
+│   ├── src/
+│   │   ├── crews/         # CrewAI agent definitions
+│   │   │   ├── base/      # Shared LLM configuration
+│   │   │   ├── random_phrase_crew/
+│   │   │   ├── pronunciation_tips_crew/
+│   │   │   └── chat_tutor_crew/
+│   │   └── lib/           # Shared utilities (tracer)
+│   ├── run.py             # Flask API server
+│   └── pyproject.toml      # Python dependencies
+├── web/                   # React frontend
+│   ├── src/
+│   │   ├── pages/         # Page components
+│   │   ├── components/    # UI components
+│   │   ├── hooks/         # Custom React hooks
+│   │   └── lib/           # Utilities and services
+│   └── package.json
+└── supabase/              # Database configuration
+    └── migrations/        # SQL migration files
+```
 
 ## Database Operations
 
@@ -47,16 +78,15 @@ Only create migration files. Let the developer apply them manually.
    mkdir -p ai/src/crews/my_new_crew/config
    ```
 
-2. Define agents in `agents.yaml`:
+2. Define agents in `config/agents.yaml`:
    ```yaml
    my_agent:
      role: "Agent Role"
      goal: "What the agent should achieve"
      backstory: "Agent's background and expertise"
-     model: "groq/llama-3.3-70b-versatile"
    ```
 
-3. Define tasks in `tasks.yaml`:
+3. Define tasks in `config/tasks.yaml`:
    ```yaml
    my_task:
      description: "Task description with {variable}"
@@ -64,31 +94,117 @@ Only create migration files. Let the developer apply them manually.
      agent: my_agent
    ```
 
-4. Create crew class in `crew.py`:
+4. Create schemas in `schemas.py`:
+   ```python
+   from pydantic import BaseModel, Field
+
+   class MyOutput(BaseModel):
+       field_name: str = Field(description="Field description")
+   ```
+
+5. Create crew class in `crew.py` using `@CrewBase` decorator:
    ```python
    from crewai import Agent, Crew, Task, Process
+   from crewai.project import CrewBase, agent, crew, task
+   from src.crews.base.llm import DEFAULT_LLM
 
-   class MyNewCrew:
-       def __init__(self):
-           # Load configs, initialize agents and tasks
-           pass
+   @CrewBase
+   class MyNewCrew():
+       agents: list[Agent]
+       tasks: list[Task]
 
-       def run(self, inputs: dict):
-           crew = Crew(
-               agents=[self.agent],
-               tasks=[self.task],
+       @agent
+       def my_agent(self) -> Agent:
+           return Agent(
+               config=self.agents_config['my_agent'],
+               llm=DEFAULT_LLM
+           )
+
+       @task
+       def my_task(self) -> Task:
+           return Task(
+               config=self.tasks_config['my_task'],
+               output_pydantic=MyOutput
+           )
+
+       @crew
+       def crew(self) -> Crew:
+           return Crew(
+               agents=self.agents,
+               tasks=self.tasks,
                process=Process.sequential
            )
-           return crew.kickoff(inputs=inputs)
    ```
 
-5. Add endpoint in `ai/run.py`:
+6. Add endpoint in `ai/run.py`:
    ```python
+   from src.crews.my_new_crew.crew import MyNewCrew
+   from src.crews.my_new_crew.schemas import MyOutput
+
    @app.route('/api/my-endpoint', methods=['POST'])
+   @require_auth
    async def my_endpoint():
-       # Initialize crew, run, return result
-       pass
+       # Get user context
+       user_id = request.user.id
+       user_context, target_language = await get_user_context(user_id)
+
+       # Run crew
+       inputs = {'user_context': user_context, 'target_language': target_language}
+       result = await MyNewCrew().crew().kickoff_async(inputs=inputs)
+
+       if hasattr(result, 'pydantic'):
+           return jsonify(result.pydantic.model_dump()), 200
+
+       return jsonify({"error": "Unexpected result format"}), 500
    ```
+
+### Agent Configuration
+
+**LLM Provider** (`ai/src/crews/base/llm.py`):
+- Default: Groq Llama 3.3 70B Versatile
+- Configurable via environment variables
+- LiteLLM abstraction allows easy provider switching
+
+**Agent Patterns**:
+- Use descriptive roles and goals
+- Provide detailed backstory for context
+- Include expected output format in task descriptions
+- Use Pydantic models for structured outputs
+
+**Tool Calling**:
+- Define tools as Python functions
+- Use CrewAI's @tool decorator
+- Pass tools to agents via `tools` parameter
+- Tool results are automatically integrated into agent context
+
+### Existing Crews
+
+**RandomPhraseCrew** (`ai/src/crews/random_phrase_crew/`)
+- Single agent: `phrase_creator`
+- Creates bilingual phrases from random word lists
+- Supports Polish, Belarusian, and Italian translations
+- Output: `PhraseOutput` (phrase, phrase_target_lang, target_language, words_used)
+
+**PronunciationTipsCrew** (`ai/src/crews/pronunciation_tips_crew/`)
+- Single agent: `pronunciation_guide`
+- Provides IPA transcriptions, syllable breakdowns, memory aids
+- Uses session-based caching via Supabase
+- Output: `PronunciationTipsOutput` (word, phonetic_transcription, syllables, pronunciation_tips, memory_aids, common_mistakes)
+
+**ChatTutorCrew** (`ai/src/crews/chat_tutor_crew/`)
+- Three agents: `router_agent`, `translation_agent`, `vocabulary_agent`
+- Routes requests to appropriate specialists
+- Supports tool calling for saving vocabulary pairs
+- Enforces domain boundaries (language learning only)
+- Output: `TutorResponse` (response_type, content, data, tool_calls)
+
+### Tracing
+
+All crew operations are automatically traced via OpenTelemetry:
+- View traces in Phoenix UI: http://localhost:6006
+- See agent reasoning chains
+- Monitor LLM calls and latency
+- Track token usage
 
 ### Environment Configuration
 

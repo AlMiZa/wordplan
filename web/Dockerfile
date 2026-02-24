@@ -13,7 +13,8 @@ COPY package.json pnpm-lock.yaml* ./
 FROM base AS development
 
 # Install all dependencies (including devDependencies)
-RUN pnpm install --frozen-lockfile
+# Use --no-frozen-lockfile for development to allow adding new dependencies
+RUN pnpm install --no-frozen-lockfile
 
 # Copy source code
 COPY . .
@@ -27,7 +28,7 @@ CMD ["pnpm", "run", "dev", "--host", "0.0.0.0"]
 FROM base AS builder
 
 # Install all dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --no-frozen-lockfile
 
 # Copy source code
 COPY . .
